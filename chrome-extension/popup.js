@@ -544,8 +544,8 @@ function formatCalTime(event) {
   if (event.start.date) return 'All day';
   const s    = new Date(event.start.dateTime);
   const e    = new Date(event.end.dateTime);
-  const opts = { hour: '2-digit', minute: '2-digit' };
-  return `${s.toLocaleTimeString([], opts)} - ${e.toLocaleTimeString([], opts)}`;
+  const opts = { hour: '2-digit', minute: '2-digit', hour12: false };
+  return `${s.toLocaleTimeString([], opts)} – ${e.toLocaleTimeString([], opts)}`;
 }
 
 function formatCalDate(event) {
@@ -878,15 +878,17 @@ calNewEventBtn.onclick = () => {
   calEvtStart.required = true;
   calEvtEnd.required   = true;
 
-  // Default: today, next 30-min boundary, 30-min duration
-  const now     = new Date();
-  calEvtDate.value = now.toISOString().slice(0, 10);
-  const startMs = Math.ceil(now.getTime() / (30 * 60 * 1000)) * (30 * 60 * 1000);
-  const startDt = new Date(startMs);
-  const endDt   = new Date(startMs + 30 * 60 * 1000);
-  const hhmm    = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  calEvtStart.value = hhmm(startDt);
-  calEvtEnd.value   = hhmm(endDt);
+  // Default: today (local date), next 30-min boundary, 30-min duration
+  const now  = new Date();
+  const pad2 = n => String(n).padStart(2, '0');
+  calEvtDate.value = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  let startH = now.getHours(), startM = now.getMinutes() < 30 ? 30 : 0;
+  if (now.getMinutes() >= 30) startH = (startH + 1) % 24;
+  let endH = startH, endM = startM + 30;
+  if (endM >= 60) { endH = (endH + 1) % 24; endM -= 60; }
+  const hhmm = (h, m) => `${pad2(h)}:${pad2(m)}`;
+  calEvtStart.value = hhmm(startH, startM);
+  calEvtEnd.value   = hhmm(endH, endM);
 
   showCalView('create');
 };
@@ -911,27 +913,43 @@ calCreateForm.onsubmit = async (e) => {
   calCreateSubmit.disabled    = true;
   calCreateSubmit.textContent = 'Saving…';
   try {
-    // All-day events need end = start + 1 day (Google uses half-open [start, end) intervals)
-    const allDayEnd = (() => {
-      const d = new Date(date + 'T00:00:00');
-      d.setDate(d.getDate() + 1);
-      return d.toISOString().slice(0, 10);
-    })();
-    await postCalendarEvent({
-      title,
-      allDay,
-      location,
-      description: desc,
-      startIso: allDay ? date : toLocalISOString(date, calEvtStart.value),
-      endIso:   allDay ? allDayEnd : toLocalISOString(date, calEvtEnd.value),
+    // All-day end = start + 1 day using local date arithmetic (avoids UTC offset bugs)
+    const [dy, dm, dd] = date.split('-').map(Number);
+    const nextDay   = new Date(dy, dm - 1, dd + 1);
+    const pad2b     = n => String(n).padStart(2, '0');
+    const allDayEnd = `${nextDay.getFullYear()}-${pad2b(nextDay.getMonth() + 1)}-${pad2b(nextDay.getDate())}`;
+
+    const startIso = allDay ? date : toLocalISOString(date, calEvtStart.value);
+    const endIso   = allDay ? allDayEnd : toLocalISOString(date, calEvtEnd.value);
+
+    // Optimistic insert so event appears immediately without waiting for API round-trip
+    const optimisticEv = {
+      id:      `optimistic_${Date.now()}`,
+      summary: title,
+      start:   allDay ? { date } : { dateTime: startIso },
+      end:     allDay ? { date: allDayEnd } : { dateTime: endIso },
+      location: location || undefined,
+      description: desc || undefined,
+      _calendarColor: 'var(--primary)',
+      _canDelete: true,
+    };
+    calEvents = [optimisticEv, ...calEvents];
+    chrome.storage.local.get(['calEventRecordings'], stored => {
+      renderCalEvents(calEvents, stored.calEventRecordings || {});
     });
+    showCalView('events');
+
+    await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso });
   } catch (err) {
+    // Remove optimistic entry on failure
+    calEvents = calEvents.filter(e => !e.id?.startsWith('optimistic_'));
     const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
     errEl.className    = 'cal-form-error';
     errEl.textContent  = err.message;
     calCreateSubmit.parentElement.insertBefore(errEl, calCreateSubmit);
     calCreateSubmit.disabled    = false;
     calCreateSubmit.textContent = 'Save';
+    showCalView('create');
     return;
   }
   calCreateSubmit.disabled    = false;
