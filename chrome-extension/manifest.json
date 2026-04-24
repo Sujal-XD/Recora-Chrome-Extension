@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Recora - ORIGNAL",
+  "version": "1.0",
+  "description": "Record browser audio and upload to Azure Blob Storage.",
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "storage",
+    "downloads",
+    "identity",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://recorderextension.blob.core.windows.net/*",
+    "http://localhost:5000/*",
+    "https://www.googleapis.com/*",
+    "https://api.deepgram.com/*"
+  ],
+  "oauth2": {
+    "client_id": "140703625037-9e2rur2157bd85qr83ne9i76d028gn8n.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "profile",
+      "email",
+      "https://www.googleapis.com/auth/calendar.readonly",
+      "https://www.googleapis.com/auth/calendar.events"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

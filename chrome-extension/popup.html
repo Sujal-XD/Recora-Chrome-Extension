@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Recora - Voice Rewards</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  
+  <div id="background-mesh">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div class="container glass-panel">
+    <!-- Header: Logo and User Info -->
+    <header class="header">
+      <div class="logo-wrapper">
+        <img src="/icons/icon48.png" alt="Recora Logo" class="brand-logo" />
+        <span class="brand-text">Recora</span>
+      </div>
+      <div id="userInfo" class="user-info">
+        <!-- User details will be injected by JavaScript -->
+      </div>
+    </header>
+
+    <!-- Navigation Tabs (shown only when logged in + consent given) -->
+    <nav id="mainNav" class="main-nav" style="display: none;">
+      <button id="navRecord" class="nav-tab active">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+        <span>Record</span>
+      </button>
+      <button id="navCalendar" class="nav-tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        <span>Calendar</span>
+      </button>
+      <button id="navHistory" class="nav-tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span>History</span>
+      </button>
+    </nav>
+
+    <!-- Main Content: Login or Recorder -->
+    <main class="main-content">
+      
+      <!-- Login View -->
+      <div id="loginSection" class="view-section fade-in">
+        <div class="hero-icon pulse-soft">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+        </div>
+        <h2>Capture Your Insights</h2>
+        <p>Sign in to seamlessly record your meetings and transform spoken words into valuable data.</p>
+        <button id="signInBtn" class="btn-primary hover-lift">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25C22.56 11.45 22.49 10.68 22.36 9.92H12V14.45H18.02C17.73 15.99 16.96 17.34 15.82 18.11V20.94H19.6C21.56 19.1 22.56 16.03 22.56 12.25Z" fill="#4285F4"/><path d="M12 23C14.97 23 17.45 22.04 19.28 20.27L15.45 17.54C14.45 18.23 13.32 18.67 12 18.67C9.5 18.67 7.37 17.06 6.55 14.8H2.58V17.61C4.38 20.91 7.89 23 12 23Z" fill="#34A853"/><path d="M6.55 14.8C6.35 14.22 6.24 13.61 6.24 13C6.24 12.39 6.35 11.78 6.55 11.2V8.4H2.58C1.69 10.15 1.13 12.04 1.13 14C1.13 15.96 1.69 17.85 2.58 19.6L6.55 16.8V14.8Z" fill="#FBBC05"/><path d="M12 5.33C13.52 5.33 14.87 5.89 15.9 6.86L19.36 3.4C17.45 1.63 14.97 0.5 12 0.5C7.89 0.5 4.38 2.09 2.58 5.4L6.55 8.2C7.37 5.94 9.5 4.33 12 4.33Z" fill="#EA4335"/></svg>
+          <span>Continue with Google</span>
+        </button>
+      </div>
+
+      <!-- Recorder View -->
+      <div id="recorderSection" class="view-section fade-in" style="display: none;">
+
+        <!-- Pre-recording metadata (hidden while recording is active) -->
+        <div id="recPreRecordForm" class="rec-pre-form">
+          <input type="text" id="recTitleInput" class="rec-title-input" placeholder="Recording title…" maxlength="80" autocomplete="off">
+          <textarea id="recDescInput" class="rec-desc-input" placeholder="Description (optional)" rows="2" maxlength="300"></textarea>
+        </div>
+
+        <div id="timerDisplay" class="timer-display neon-text">00:00</div>
+
+        <div class="controls-area">
+          <div class="record-btn-wrapper">
+            <div class="recorder-halo" id="recorderHalo"></div>
+            <button id="recordBtn" class="record-button idle">
+              <svg id="micIcon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+              <svg id="squareIcon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" style="display: none;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect></svg>
+            </button>
+          </div>
+
+          <button id="pauseBtn" class="pause-button" style="display: none;">
+            <svg id="pauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+              <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+            </svg>
+            <svg id="resumeIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+              <polygon points="5,3 19,12 5,21"></polygon>
+            </svg>
+            <span id="pauseBtnText">Pause</span>
+          </button>
+        </div>
+
+        <div id="status" class="status-text animated-dots">Ready</div>
+      </div>
+
+      <!-- Calendar Section -->
+      <div id="calendarSection" class="cal-section" style="display: none;">
+
+        <!-- Events List View -->
+        <div id="calEventsView" class="cal-view">
+          <div class="cal-topbar">
+            <span class="cal-heading">Upcoming Events</span>
+            <div style="display:flex;gap:0.4rem;">
+              <button id="calRefreshBtn" class="cal-icon-btn" title="Refresh">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              </button>
+              <button id="calNewEventBtn" class="cal-icon-btn" title="New Event">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+            </div>
+          </div>
+          <div id="calEventsList" class="cal-events-list">
+            <div class="cal-loading">Loading events…</div>
+          </div>
+        </div>
+
+        <!-- Event Detail View -->
+        <div id="calDetailView" class="cal-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="calBackFromDetail" class="cal-back-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Back
+            </button>
+            <button id="calDeleteEventBtn" class="cal-delete-btn" title="Delete event">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+            </button>
+          </div>
+          <div id="calDetailContent" class="cal-detail-content"></div>
+          <button id="calRecordEventBtn" class="btn-primary hover-lift cal-record-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+            Record this Meeting
+          </button>
+        </div>
+
+        <!-- Create Event View -->
+        <div id="calCreateView" class="cal-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="calBackFromCreate" class="cal-back-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Back
+            </button>
+            <span class="cal-heading">New Event</span>
+          </div>
+          <div class="cal-form-wrap">
+            <form id="calCreateForm" class="cal-form">
+              <input type="text" id="calEvtTitle" class="cal-title-input" placeholder="Add title" required autocomplete="off">
+              <div class="cal-form-section">
+                <!-- Date -->
+                <div class="cal-field-row">
+                  <svg class="cal-field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  <input type="date" id="calEvtDate" class="cal-input" required>
+                </div>
+                <!-- Time range -->
+                <div id="calTimeRow" class="cal-time-block">
+                  <div class="cal-time-pair">
+                    <span class="cal-time-label">Start</span>
+                    <input type="time" id="calEvtStart" class="cal-input">
+                  </div>
+                  <span class="cal-time-sep">–</span>
+                  <div class="cal-time-pair">
+                    <span class="cal-time-label">End</span>
+                    <input type="time" id="calEvtEnd" class="cal-input">
+                  </div>
+                </div>
+                <!-- All day toggle -->
+                <label class="cal-allday-row">
+                  <svg class="cal-field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  <span class="cal-allday-text">All day</span>
+                  <input type="checkbox" id="calEvtAllDay" class="cal-toggle-input">
+                  <span class="cal-toggle-track"><span class="cal-toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div class="cal-form-section">
+                <div class="cal-field-row">
+                  <svg class="cal-field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  <input type="text" id="calEvtLocation" class="cal-input" placeholder="Add location" autocomplete="off">
+                </div>
+              </div>
+              <div class="cal-form-section">
+                <div class="cal-field-row cal-field-row--top">
+                  <svg class="cal-field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
+                  <textarea id="calEvtDesc" class="cal-input cal-textarea" placeholder="Add description" rows="3"></textarea>
+                </div>
+              </div>
+              <button type="submit" id="calCreateSubmit" class="btn-primary hover-lift">Save</button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- History Section -->
+      <div id="historySection" class="hist-section" style="display: none;">
+
+        <!-- List View -->
+        <div id="histListView" class="hist-view">
+          <div class="cal-topbar">
+            <span class="cal-heading">Recordings</span>
+            <button id="histRefreshBtn" class="cal-icon-btn" title="Refresh">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+          <div id="histCardsList" class="hist-cards-list">
+            <div class="hist-empty">Loading recordings…</div>
+          </div>
+        </div>
+
+        <!-- Transcript View -->
+        <div id="histTranscriptView" class="hist-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="histBackFromTranscript" class="cal-back-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Back
+            </button>
+            <span class="cal-heading">Transcript</span>
+          </div>
+          <div id="histTranscriptContent" class="hist-scroll-content"></div>
+        </div>
+
+        <!-- Summary View -->
+        <div id="histSummaryView" class="hist-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="histBackFromSummary" class="cal-back-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Back
+            </button>
+            <span class="cal-heading">Meeting Summary</span>
+          </div>
+          <div id="histSummaryContent" class="hist-scroll-content"></div>
+        </div>
+
+      </div>
+
+      <!-- Consent Section -->
+      <div id="consentSection" class="view-section fade-in glass-card" style="display: none;">
+        <div class="shield-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        </div>
+        <h3>Privacy Consent</h3>
+        <p>To capture insights, we need temporary access to your microphone and current tab audio.</p>
+        <div class="consent-checkbox-group">
+          <label class="custom-checkbox">
+            <input type="checkbox" id="consentCheckbox">
+            <span class="checkmark"></span>
+            <span class="checkbox-label">I agree to the <a href="https://example.com/terms" target="_blank" id="tcLink">Terms & Conditions</a></span>
+          </label>
+        </div>
+        <button id="acceptConsentBtn" class="btn-primary hover-lift" disabled>Accept & Start</button>
+      </div>
+    </main>
+
+    <!-- Footer: hidden, sign-out moved to profile dropdown -->
+    <footer class="footer" style="display:none;">
+      <button id="logoutBtn" style="display:none;"></button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
