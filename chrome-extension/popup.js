@@ -1365,6 +1365,80 @@ function buildSummaryText(rec) {
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// PDF download + email helpers
+// ---------------------------------------------------------------------------
+function buildPdfPayload(type, rec, calEvent) {
+  return {
+    type,
+    recording: {
+      title:      rec.title,
+      createdAt:  rec.createdAt || rec.date,
+      duration:   rec.duration,
+      transcript: rec.transcript || [],
+      summary:    rec.summary    || {},
+    },
+    calEvent: calEvent || null,
+  };
+}
+
+async function downloadDocPdf(btn, type, rec, calEvent) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    let token;
+    try { token = await getAuthToken(false); } catch (_) { token = await getAuthToken(true); }
+    const res = await fetch(`${BACKEND}/generate-pdf`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(buildPdfPayload(type, rec, calEvent)),
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`); }
+    const ab   = await res.arrayBuffer();
+    const blob = new Blob([ab], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const safe = (rec.title || 'recording').replace(/[^a-z0-9_\-]/gi, '_');
+    await new Promise((resolve, reject) => {
+      chrome.downloads.download({ url, filename: `${safe}_${type}.pdf`, saveAs: false }, id => {
+        chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id);
+      });
+    });
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    btn.textContent = 'Done!';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  } catch (err) {
+    console.error('PDF download error:', err);
+    btn.textContent = 'Error';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  }
+}
+
+async function sendDocEmail(btn, type, rec, calEvent) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    let token;
+    try { token = await getAuthToken(false); } catch (_) { token = await getAuthToken(true); }
+    const res = await fetch(`${BACKEND}/send-document-email`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(buildPdfPayload(type, rec, calEvent)),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    btn.textContent = 'Sent!';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  } catch (err) {
+    console.error('Email send error:', err);
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  }
+}
+
 function downloadTextFile(filename, content) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
@@ -1490,7 +1564,7 @@ function renderHistDetailContent(rec) {
         <div class="hist-tab-pane${tab==='mom'?' active':''}" data-dpane="mom">${momHtml}</div>
       </div>
       <div class="hist-download-section">
-        <div class="hist-download-label">Download</div>
+        <div class="hist-download-label">Download Text</div>
         <div class="hist-download-row">
           <button class="hist-download-btn" data-dl="transcript" ${!hasT ? 'disabled' : ''}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
@@ -1514,6 +1588,35 @@ function renderHistDetailContent(rec) {
           </button>
         </div>
       </div>
+      ${s === 'done' ? `
+      <div class="hist-pdf-section">
+        <div class="hist-pdf-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          PDF Export
+        </div>
+        <div class="hist-pdf-row">
+          <span class="hist-pdf-row-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download
+          </span>
+          <div class="hist-pdf-btns">
+            <button class="hist-pdf-btn" data-pdf="transcript" ${!hasT ? 'disabled' : ''}>Transcript</button>
+            <button class="hist-pdf-btn" data-pdf="summary"    ${!hasS ? 'disabled' : ''}>Summary</button>
+            <button class="hist-pdf-btn" data-pdf="mom">MOM</button>
+          </div>
+        </div>
+        <div class="hist-pdf-row">
+          <span class="hist-pdf-row-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            Email
+          </span>
+          <div class="hist-pdf-btns">
+            <button class="hist-pdf-btn hist-email-btn" data-email="transcript" ${!hasT ? 'disabled' : ''}>Transcript</button>
+            <button class="hist-pdf-btn hist-email-btn" data-email="summary"    ${!hasS ? 'disabled' : ''}>Summary</button>
+            <button class="hist-pdf-btn hist-email-btn" data-email="mom">MOM</button>
+          </div>
+        </div>
+      </div>` : ''}
       <div class="hist-folder-assign">
         <label class="hist-folder-assign-label">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -1551,6 +1654,16 @@ function renderHistDetailContent(rec) {
           case 'wav':        downloadWav(btn, rec); break;
         }
       });
+    });
+
+    // PDF download buttons
+    histDetailContent.querySelectorAll('[data-pdf]').forEach(btn => {
+      btn.addEventListener('click', () => downloadDocPdf(btn, btn.dataset.pdf, rec, calEvent));
+    });
+
+    // Email send buttons
+    histDetailContent.querySelectorAll('[data-email]').forEach(btn => {
+      btn.addEventListener('click', () => sendDocEmail(btn, btn.dataset.email, rec, calEvent));
     });
 
     // Delete with confirm

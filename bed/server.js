@@ -4,7 +4,8 @@ const express   = require('express');
 const cors      = require('cors');
 const rateLimit = require('express-rate-limit');
 const { BlobServiceClient, generateBlobSASQueryParameters, StorageSharedKeyCredential, ContainerSASPermissions, BlobSASPermissions } = require('@azure/storage-blob');
-const { sendRecordingEmail } = require('./services/emailService');
+const { sendRecordingEmail, sendDocumentEmail }         = require('./services/emailService');
+const { generateMomPdf, generateSummaryPdf, generateTranscriptPdf } = require('./services/pdfService');
 
 // Startup credential check
 console.log(`Azure account : ${process.env.AZURE_STORAGE_ACCOUNT_NAME ? '✓' : '✗ MISSING'}`);
@@ -233,6 +234,68 @@ app.post('/send-recording-email', verifyGoogleToken, emailLimiter, async (req, r
     res.status(500).json({ error: emailErr.message });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Shared helper — pick the right generator
+// ---------------------------------------------------------------------------
+const ALLOWED_TYPES = ['mom', 'summary', 'transcript'];
+
+async function buildDocPdf(type, recording, calEvent) {
+  if (!ALLOWED_TYPES.includes(type)) throw new Error(`Unknown type: ${type}`);
+  if (type === 'mom')        return generateMomPdf(recording, calEvent);
+  if (type === 'summary')    return generateSummaryPdf(recording);
+  return generateTranscriptPdf(recording);
+}
+
+// ---------------------------------------------------------------------------
+// POST /generate-pdf — returns PDF bytes (application/pdf)
+// Body: { type, recording: { title, createdAt, duration, transcript, summary }, calEvent? }
+// ---------------------------------------------------------------------------
+app.post(
+  '/generate-pdf',
+  verifyGoogleToken,
+  express.json({ limit: '2mb' }),
+  async (req, res) => {
+    const { type, recording, calEvent } = req.body || {};
+    if (!type || !recording) return res.status(400).json({ error: '`type` and `recording` are required.' });
+
+    try {
+      const pdfBuf = await buildDocPdf(type, recording, calEvent || null);
+      const safe   = (recording.title || 'document').replace(/[^a-z0-9_\- ]/gi, '_').trim();
+      res.set('Content-Type',        'application/pdf');
+      res.set('Content-Disposition', `attachment; filename="${safe}_${type}.pdf"`);
+      res.set('Cache-Control',       'no-store');
+      res.send(pdfBuf);
+    } catch (err) {
+      console.error('PDF generation error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// POST /send-document-email — generates PDF and emails it to the user
+// Body: { type, recording, calEvent? }
+// ---------------------------------------------------------------------------
+app.post(
+  '/send-document-email',
+  verifyGoogleToken,
+  emailLimiter,
+  express.json({ limit: '2mb' }),
+  async (req, res) => {
+    const { type, recording, calEvent } = req.body || {};
+    if (!type || !recording) return res.status(400).json({ error: '`type` and `recording` are required.' });
+
+    try {
+      const pdfBuf = await buildDocPdf(type, recording, calEvent || null);
+      await sendDocumentEmail(req.userEmail, type, recording.title, pdfBuf);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Document email error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {

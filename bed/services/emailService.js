@@ -144,4 +144,110 @@ async function sendRecordingEmail(to, downloadLink, duration, title = 'Recording
   console.log(`Recording email sent to ${to} — title: "${title}"`);
 }
 
-module.exports = { sendRecordingEmail };
+async function sendDocumentEmail(to, type, title, pdfBuffer) {
+  const typeLabel = type === 'mom' ? 'Minutes of Meeting' : type === 'summary' ? 'Meeting Summary' : 'Meeting Transcript';
+  const safeTitle = (title || 'Meeting').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fileName  = `${(title || 'recording').replace(/[^a-z0-9_\- ]/gi, '_').trim()}_${type}.pdf`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${typeLabel}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;max-width:560px;width:100%;border:1px solid #e4e4e7;">
+
+        <tr>
+          <td style="background:#100b2e;padding:0;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="5" style="background:#7c3aed;">&nbsp;</td>
+                <td style="padding:22px 28px;">
+                  <h1 style="color:#ffffff;margin:0;font-size:18px;font-weight:700;">Recora</h1>
+                  <p style="color:#c4b5fd;margin:5px 0 0;font-size:12px;">${typeLabel}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:28px 32px;">
+            <p style="color:#111827;font-size:15px;line-height:1.6;margin:0 0 20px;">
+              Hi there,<br><br>
+              Your <strong>${typeLabel}</strong> for the meeting <strong>&ldquo;${safeTitle}&rdquo;</strong> is attached to this email as a PDF.
+            </p>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;margin-bottom:20px;">
+              <tr>
+                <td style="padding:14px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="color:#71717a;font-size:12px;padding-bottom:6px;width:100px;">Document</td>
+                      <td style="color:#111827;font-size:12px;font-weight:600;padding-bottom:6px;">${typeLabel}</td>
+                    </tr>
+                    <tr>
+                      <td style="color:#71717a;font-size:12px;">Meeting</td>
+                      <td style="color:#111827;font-size:12px;font-weight:600;">${safeTitle}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <p style="color:#71717a;font-size:12px;text-align:center;margin:0;">
+              The PDF is attached to this email. Open it with any PDF viewer.
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:14px 32px;border-top:1px solid #e4e4e7;color:#a1a1aa;font-size:11px;text-align:center;">
+            Sent by <strong>Recora</strong> &middot; Your AI Meeting Assistant<br>
+            <a href="mailto:${process.env.EMAIL_USER}?subject=unsubscribe" style="color:#a1a1aa;">Unsubscribe</a>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const text = [
+    `Your ${typeLabel} for "${title}" is ready.`,
+    ``,
+    `The PDF is attached to this email.`,
+    ``,
+    `-- Recora`,
+    `To unsubscribe reply with "unsubscribe" in the subject.`,
+  ].join('\n');
+
+  const mailOptions = {
+    from:    `"Recora" <${process.env.EMAIL_USER}>`,
+    replyTo: process.env.EMAIL_USER,
+    to,
+    subject: `Your ${typeLabel}: "${title}"`,
+    text,
+    html,
+    headers: {
+      'List-Unsubscribe': `<mailto:${process.env.EMAIL_USER}?subject=unsubscribe>`,
+      'X-Priority':       '3',
+      'Precedence':       'bulk',
+    },
+    attachments: [{
+      filename:    fileName,
+      content:     pdfBuffer,
+      contentType: 'application/pdf',
+    }],
+  };
+
+  await getTransporter().sendMail(mailOptions);
+  console.log(`Document email sent to ${to} — type: ${type}, title: "${title}"`);
+}
+
+module.exports = { sendRecordingEmail, sendDocumentEmail };
