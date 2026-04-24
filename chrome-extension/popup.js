@@ -324,12 +324,20 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     case 'transcription_done':
       statusDiv.textContent = 'Ready';
-      // Always reload history — background may have synced new data to Azure
-      // regardless of which tab is currently active.
+      // Save calendar-event → recording link if session was triggered from calendar
+      chrome.storage.local.get(['pendingCalEventLink'], stored => {
+        if (stored.pendingCalEventLink && message.recId) {
+          const linkKey = `callink_${stored.pendingCalEventLink.id}`;
+          chrome.storage.local.get(['calEventRecordings'], r => {
+            const map = r.calEventRecordings || {};
+            map[linkKey] = { recordingId: message.recId, event: stored.pendingCalEventLink };
+            chrome.storage.local.set({ calEventRecordings: map });
+          });
+          chrome.storage.local.remove(['pendingCalEventLink']);
+        }
+      });
       loadHistory();
       if (activeTab !== 'history') showTab('history');
-      // Push completed recording to Azure — filter to current user only to
-      // prevent cross-account contamination in the Azure recordings.json.
       chrome.storage.local.get(['recordings'], (r) => {
         const userRecs = (r.recordings || []).filter(rec => rec.userId === currentUser?.sub);
         azureSyncRecordings(userRecs);
@@ -684,7 +692,7 @@ function eventColor(ev) {
   return GCAL_COLORS[ev.colorId] || ev._calendarColor || 'var(--primary)';
 }
 
-function renderCalEvents(events) {
+function renderCalEvents(events, recordingsMap = {}) {
   if (!events.length) {
     calEventsList.innerHTML = `
       <div class="cal-empty">
@@ -694,42 +702,84 @@ function renderCalEvents(events) {
     return;
   }
 
-  const today    = new Date(); today.setHours(0,0,0,0);
-  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const now      = new Date();
+  const todayDay = new Date(now); todayDay.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(todayDay); tomorrow.setDate(todayDay.getDate() + 1);
 
-  let html = '';
-  let lastDateKey = '';
-
-  events.forEach((ev, i) => {
-    const dateKey = (ev.start.date || ev.start.dateTime || '').slice(0, 10);
-    if (dateKey !== lastDateKey) {
-      const d    = new Date(dateKey + 'T00:00:00');
-      const cmp  = new Date(d); cmp.setHours(0,0,0,0);
-      let badge  = '';
-      if (cmp.getTime() === today.getTime())    badge = '<span class="cal-today-badge">Today</span>';
-      else if (cmp.getTime() === tomorrow.getTime()) badge = '<span class="cal-today-badge cal-tomorrow-badge">Tomorrow</span>';
-      const dayName = d.toLocaleDateString([], { weekday: 'long' });
-      const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      html += `<div class="cal-day-header">${badge}<span class="cal-day-name">${escapeHtml(dayName)}</span><span class="cal-day-date">${escapeHtml(dateStr)}</span></div>`;
-      lastDateKey = dateKey;
+  // Split: completed = today's timed events whose end time has passed
+  const upcoming  = []; // { ev, idx }
+  const completed = []; // { ev, idx }
+  events.forEach((ev, idx) => {
+    if (ev.end?.dateTime) {
+      const endDt    = new Date(ev.end.dateTime);
+      const startDay = new Date(ev.start.dateTime); startDay.setHours(0, 0, 0, 0);
+      if (startDay.getTime() === todayDay.getTime() && endDt < now) {
+        completed.push({ ev, idx });
+        return;
+      }
     }
+    upcoming.push({ ev, idx });
+  });
 
-    const color   = eventColor(ev);
-    const locHtml = ev.location
+  // Build HTML helper for a single event row
+  function evRowHtml(ev, idx, isDone) {
+    const color    = eventColor(ev);
+    const locHtml  = ev.location
       ? `<div class="ev-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${escapeHtml(ev.location)}</div>` : '';
-    const meetBadge = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
-
-    html += `
-      <div class="ev-row" data-idx="${i}">
-        <div class="ev-time">${escapeHtml(formatCalTime(ev))}</div>
-        <div class="ev-bar" style="background:${color}"></div>
+    const meetBadge   = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
+    const isRecorded  = isDone && Object.values(recordingsMap).some(v => v.event?.id === ev.id);
+    const recBadge    = isRecorded
+      ? `<span class="ev-recorded-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Recorded</span>`
+      : '';
+    const rowClass   = isDone ? 'ev-row ev-row--completed' : 'ev-row';
+    const barOpacity = isDone ? 'opacity:0.35;' : '';
+    const chevron    = isDone ? '' : `<svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+    return `
+      <div class="${rowClass}" data-idx="${idx}">
+        <div class="ev-time${isDone ? ' ev-time--done' : ''}">${escapeHtml(formatCalTime(ev))}</div>
+        <div class="ev-bar" style="background:${color};${barOpacity}"></div>
         <div class="ev-info">
-          <div class="ev-title">${escapeHtml(ev.summary || 'Untitled Event')}${meetBadge}</div>
+          <div class="ev-title">${escapeHtml(ev.summary || 'Untitled Event')}${meetBadge}${recBadge}</div>
           ${locHtml}
         </div>
-        <svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        ${chevron}
       </div>`;
-  });
+  }
+
+  let html = '';
+
+  // — Upcoming section —
+  if (upcoming.length) {
+    let lastDateKey = '';
+    upcoming.forEach(({ ev, idx }) => {
+      const dateKey = (ev.start.date || ev.start.dateTime || '').slice(0, 10);
+      if (dateKey !== lastDateKey) {
+        const d   = new Date(dateKey + 'T00:00:00');
+        const cmp = new Date(d); cmp.setHours(0, 0, 0, 0);
+        let badge = '';
+        if (cmp.getTime() === todayDay.getTime())   badge = '<span class="cal-today-badge">Today</span>';
+        else if (cmp.getTime() === tomorrow.getTime()) badge = '<span class="cal-today-badge cal-tomorrow-badge">Tomorrow</span>';
+        const dayName = d.toLocaleDateString([], { weekday: 'long' });
+        const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        html += `<div class="cal-day-header">${badge}<span class="cal-day-name">${escapeHtml(dayName)}</span><span class="cal-day-date">${escapeHtml(dateStr)}</span></div>`;
+        lastDateKey = dateKey;
+      }
+      html += evRowHtml(ev, idx, false);
+    });
+  } else if (!completed.length) {
+    html += `<div class="cal-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;display:block;margin:0 auto 0.5rem"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>No upcoming events</div>`;
+  }
+
+  // — Completed Today section —
+  if (completed.length) {
+    html += `
+      <div class="cal-completed-header" style="margin-top:${upcoming.length ? '0.6rem' : '0'}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span class="cal-completed-badge">Done</span>
+        <span class="cal-completed-label">Completed Today</span>
+      </div>`;
+    completed.forEach(({ ev, idx }) => { html += evRowHtml(ev, idx, true); });
+  }
 
   calEventsList.innerHTML = html;
   calEventsList.querySelectorAll('.ev-row').forEach(row => {
@@ -779,8 +829,12 @@ async function loadCalendar() {
   calEventsList.innerHTML = '<div class="cal-loading">Loading events…</div>';
   calRefreshBtn.classList.add('spinning');
   try {
-    calEvents = await fetchCalendarEvents();
-    renderCalEvents(calEvents);
+    const [evts, stored] = await Promise.all([
+      fetchCalendarEvents(),
+      new Promise(r => chrome.storage.local.get(['calEventRecordings'], r)),
+    ]);
+    calEvents = evts;
+    renderCalEvents(calEvents, stored.calEventRecordings || {});
   } catch (err) {
     calEventsList.innerHTML = `<div class="cal-empty"><small>${escapeHtml(err.message)}</small></div>`;
   } finally {
@@ -817,19 +871,29 @@ calEvtAllDay.onchange = () => {
 
 calNewEventBtn.onclick = () => {
   calEvtTitle.value    = '';
-  calEvtDate.value     = new Date().toISOString().slice(0, 10);
-  calEvtStart.value    = '';
-  calEvtEnd.value      = '';
   calEvtLocation.value = '';
   calEvtDesc.value     = '';
   calEvtAllDay.checked = false;
   calTimeRow.style.display = 'flex';
   calEvtStart.required = true;
   calEvtEnd.required   = true;
+
+  // Default: today, next 30-min boundary, 30-min duration
+  const now     = new Date();
+  calEvtDate.value = now.toISOString().slice(0, 10);
+  const startMs = Math.ceil(now.getTime() / (30 * 60 * 1000)) * (30 * 60 * 1000);
+  const startDt = new Date(startMs);
+  const endDt   = new Date(startMs + 30 * 60 * 1000);
+  const hhmm    = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  calEvtStart.value = hhmm(startDt);
+  calEvtEnd.value   = hhmm(endDt);
+
   showCalView('create');
 };
 
 calRecordEventBtn.onclick = () => {
+  // Persist the event so background can link it to the recording after transcription
+  if (activeCalEvent) chrome.storage.local.set({ pendingCalEventLink: activeCalEvent });
   showTab('record');
   if (!isRecording) initiateRecording();
 };

@@ -1750,6 +1750,17 @@ input[type="time"].cal-input {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.ev-row--completed {
+  opacity: 0.65;
+  cursor: pointer;
+}
+.ev-row--completed:hover { opacity: 0.85; }
+.ev-time--done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255,255,255,0.25);
+}
+
 .ev-recorded-btn {
   display: inline-flex;
   align-items: center;
