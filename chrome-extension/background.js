@@ -20,6 +20,18 @@ let recordingState = {
 
 const OFFSCREEN_URL = chrome.runtime.getURL('offscreen.html');
 
+function getChromeAuthToken() {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (chrome.runtime.lastError || !token) {
+        reject(new Error(chrome.runtime.lastError?.message || 'Not authenticated'));
+      } else {
+        resolve(token);
+      }
+    });
+  });
+}
+
 // Restore state after service worker restart (MV3 workers are killed after ~30s idle)
 (async () => {
   try {
@@ -93,9 +105,10 @@ function broadcastState(extra = {}) {
 }
 
 async function getUploadSasToken(userId, blobName) {
-  const response = await fetch('http://localhost:5000/generate-upload-sas', {
+  const authToken = await getChromeAuthToken();
+  const response = await fetch('https://recora-chrome-extension.onrender.com/generate-upload-sas', {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
     body:    JSON.stringify({ userId, blobName }),
     cache:   'no-store',
   });
@@ -142,12 +155,13 @@ async function uploadBlobWithRestApi(blob, userId, metadata, ext = 'webm') {
 async function syncMetadataToAzure(userId) {
   if (!userId) return;
   try {
+    const authToken = await getChromeAuthToken();
     const { recordings = [] } = await new Promise(resolve =>
       chrome.storage.local.get(['recordings'], resolve)
     );
-    const sasRes = await fetch('http://localhost:5000/generate-upload-sas', {
+    const sasRes = await fetch('https://recora-chrome-extension.onrender.com/generate-upload-sas', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
       body:    JSON.stringify({ userId, blobName: 'recordings.json' }),
       cache:   'no-store',
     });
@@ -356,17 +370,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // Hook: send email when recording stops — fire-and-forget
         if (emailTo) {
-          fetch('http://localhost:5000/send-recording-email', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to:           emailTo,
-              downloadLink: audioUrl,
-              duration:     message.duration,
-              blobPath:     fullBlobPath,
-              title:        emailTitle,
-            }),
-          }).catch((err) => console.warn('Email notification failed:', err.message));
+          getChromeAuthToken()
+            .then(authToken => fetch('https://recora-chrome-extension.onrender.com/send-recording-email', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+              body: JSON.stringify({
+                downloadLink: audioUrl,
+                duration:     message.duration,
+                blobPath:     fullBlobPath,
+                title:        emailTitle,
+              }),
+            }))
+            .catch((err) => console.warn('Email notification failed:', err.message));
         }
       })
       .catch((err) => {
@@ -391,7 +406,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Transcription — runs independently of upload
     const syncUserId = message.userId;
     if (typeof transcribeAudio === 'function') {
-      transcribeAudio(blob)
+      getChromeAuthToken()
+        .then(authToken => transcribeAudio(blob, authToken))
         .then(({ transcript, summary }) => {
           patchRec({ transcript, summary, status: 'done' });
           broadcastState({ status: 'transcription_done', recId });
@@ -421,8 +437,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // // Function to get dynamic SAS token from your backend
 // async function getUploadSasToken(userId, blobName) {
 //     try {
-//         // IMPORTANT: Replace 'http://localhost:5000' with your actual backend URL if different
-//         const response = await fetch('http://localhost:5000/generate-upload-sas', {
+//         // IMPORTANT: Replace 'https://recora-chrome-extension.onrender.com' with your actual backend URL if different
+//         const response = await fetch('https://recora-chrome-extension.onrender.com/generate-upload-sas', {
 //             method: 'POST',
 //             headers: { 'Content-Type': 'application/json' },
 //             body: JSON.stringify({ userId, blobName }),

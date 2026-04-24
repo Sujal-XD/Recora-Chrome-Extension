@@ -1173,7 +1173,7 @@ function showSummaryView(rec) {
 // so recordings are accessible from any device with the same account.
 // ---------------------------------------------------------------------------
 const AZURE_BASE = 'https://recorderextension.blob.core.windows.net/meeting-audio';
-const BACKEND    = 'http://localhost:5000';
+const BACKEND    = 'https://recora-chrome-extension.onrender.com';
 
 async function azureLoadRecordings() {
   if (!currentUser?.sub) return [];
@@ -1191,9 +1191,11 @@ async function azureLoadRecordings() {
 async function azureSyncRecordings(recordings) {
   if (!currentUser?.sub) return false;
   try {
+    let token;
+    try { token = await getAuthToken(false); } catch (_) { return false; }
     const sasRes = await fetch(`${BACKEND}/generate-upload-sas`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body:    JSON.stringify({ userId: currentUser.sub, blobName: 'recordings.json' }),
       cache:   'no-store',
     });

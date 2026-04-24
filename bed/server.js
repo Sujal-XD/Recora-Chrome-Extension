@@ -1,7 +1,8 @@
 require('dotenv').config();
 
-const express = require('express');
-const cors = require('cors');
+const express   = require('express');
+const cors      = require('cors');
+const rateLimit = require('express-rate-limit');
 const { BlobServiceClient, generateBlobSASQueryParameters, StorageSharedKeyCredential, ContainerSASPermissions, BlobSASPermissions } = require('@azure/storage-blob');
 const { sendRecordingEmail } = require('./services/emailService');
 
@@ -9,15 +10,39 @@ const { sendRecordingEmail } = require('./services/emailService');
 console.log(`Azure account : ${process.env.AZURE_STORAGE_ACCOUNT_NAME ? '✓' : '✗ MISSING'}`);
 console.log(`Email user    : ${process.env.EMAIL_USER                  ? '✓ ' + process.env.EMAIL_USER : '✗ MISSING'}`);
 console.log(`Email pass    : ${process.env.EMAIL_PASS                  ? '✓ (set)' : '✗ MISSING'}`);
+console.log(`Deepgram key  : ${process.env.DEEPGRAM_API_KEY            ? '✓ (set)' : '✗ MISSING'}`);
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// ---------------------------------------------------------------------------
+// CORS — allow only Chrome extension origins and no-origin (service workers)
+// ---------------------------------------------------------------------------
+const EXT_ORIGIN_RX = /^chrome-extension:\/\//;
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || EXT_ORIGIN_RX.test(origin)) return cb(null, true);
+    cb(Object.assign(new Error('CORS: origin not allowed'), { status: 403 }));
+  },
+  methods:        ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Body size limit for all JSON routes (audio handled per-route below)
+app.use(express.json({ limit: '10kb' }));
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false });
+const emailLimiter   = rateLimit({ windowMs: 60 * 60 * 1000, max: 10,  standardHeaders: true, legacyHeaders: false });
+app.use(generalLimiter);
 
 // Health check — Render pings GET / to confirm the service is up
 app.get('/', (_req, res) => res.send('Server is running'));
 
+// ---------------------------------------------------------------------------
+// Azure credentials
+// ---------------------------------------------------------------------------
 const accountName   = process.env.AZURE_STORAGE_ACCOUNT_NAME;
 const accountKey    = process.env.AZURE_STORAGE_ACCOUNT_KEY;
 const containerName = 'meeting-audio';
@@ -34,14 +59,38 @@ const blobServiceClient   = new BlobServiceClient(
 );
 
 // ---------------------------------------------------------------------------
-// POST /generate-sas  — read/list token for fetching recordings
+// Google token verification middleware
+// Calls Google's tokeninfo endpoint — no local secret needed.
+// Sets req.userId (Google sub) and req.userEmail on success.
 // ---------------------------------------------------------------------------
-app.post('/generate-sas', (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).send('User ID is required');
+async function verifyGoogleToken(req, res, next) {
+  const auth  = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) return res.status(401).json({ error: 'Missing auth token' });
 
   try {
-    // Wide window — same clock-skew tolerance as upload SAS.
+    const r = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+    );
+    if (!r.ok) return res.status(401).json({ error: 'Invalid token' });
+    const info = await r.json();
+    if (!info.sub || !info.email) return res.status(401).json({ error: 'Invalid token claims' });
+    if (info.exp && Date.now() / 1000 > Number(info.exp)) {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    req.userId    = info.sub;
+    req.userEmail = info.email;
+    next();
+  } catch (_) {
+    return res.status(401).json({ error: 'Token verification failed' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /generate-sas  — read/list token for fetching recordings
+// ---------------------------------------------------------------------------
+app.post('/generate-sas', verifyGoogleToken, (req, res) => {
+  try {
     const startTime = new Date();
     startTime.setDate(startTime.getDate() - 1);
     const expiryTime = new Date();
@@ -65,28 +114,26 @@ app.post('/generate-sas', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /generate-upload-sas  — create/write token for a specific blob
 // ---------------------------------------------------------------------------
-app.post('/generate-upload-sas', (req, res) => {
-  const { userId, blobName } = req.body;
-  if (!userId || !blobName) return res.status(400).send('User ID and Blob Name are required.');
+app.post('/generate-upload-sas', verifyGoogleToken, (req, res) => {
+  const { blobName } = req.body;
+  if (!blobName) return res.status(400).send('Blob name is required.');
 
   try {
-    // Wide window: start 24 h BEFORE server clock, expire 48 h AFTER.
-    // This tolerates server clock drift of up to ±24 h so Azure always
-    // accepts the token even if this machine's clock is badly out of sync.
     const startTime = new Date();
     startTime.setDate(startTime.getDate() - 1);
     const expiryTime = new Date();
     expiryTime.setDate(expiryTime.getDate() + 2);
 
+    // userId locked to the verified token — cannot be spoofed via request body
     const sasToken = generateBlobSASQueryParameters({
       containerName,
-      blobName:    `${userId}/${blobName}`,
+      blobName:    `${req.userId}/${blobName}`,
       permissions: BlobSASPermissions.parse('cw'),
       startsOn:    startTime,
       expiresOn:   expiryTime,
     }, sharedKeyCredential).toString();
 
-    console.log(`Upload SAS generated — user: ${userId}, blob: ${blobName}`);
+    console.log(`Upload SAS generated — user: ${req.userId}, blob: ${blobName}`);
     res.set('Cache-Control', 'no-store');
     res.json({ sasToken });
   } catch (error) {
@@ -96,16 +143,62 @@ app.post('/generate-upload-sas', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /transcribe — Deepgram proxy (API key stays server-side)
+// Accepts raw audio body; forwards query params to Deepgram as-is.
+// ---------------------------------------------------------------------------
+app.post(
+  '/transcribe',
+  verifyGoogleToken,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  async (req, res) => {
+    const dgKey = process.env.DEEPGRAM_API_KEY;
+    if (!dgKey) return res.status(503).json({ error: 'Transcription service not configured' });
+
+    try {
+      const params = new URLSearchParams(req.query);
+      const dgRes  = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
+        method:  'POST',
+        headers: {
+          'Authorization': `Token ${dgKey}`,
+          'Content-Type':  req.headers['content-type'] || 'audio/webm',
+        },
+        body: req.body,
+      });
+
+      if (!dgRes.ok) {
+        const errText = await dgRes.text();
+        console.error('Deepgram error:', dgRes.status, errText);
+        return res.status(dgRes.status).json({ error: `Transcription failed: ${dgRes.status}` });
+      }
+
+      const data = await dgRes.json();
+      res.json(data);
+    } catch (err) {
+      console.error('Transcription proxy error:', err.message);
+      res.status(500).json({ error: 'Transcription proxy error' });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // POST /send-recording-email
 // Called by background.js after a recording is uploaded to Azure.
 // ---------------------------------------------------------------------------
 const MAX_ATTACH_BYTES = 15 * 1024 * 1024; // 15 MB
 
-app.post('/send-recording-email', async (req, res) => {
-  const { to, downloadLink, duration, blobPath, title } = req.body;
+app.post('/send-recording-email', verifyGoogleToken, emailLimiter, async (req, res) => {
+  const { downloadLink, duration, blobPath, title } = req.body;
 
-  if (!to || !downloadLink) {
-    return res.status(400).json({ error: '`to` and `downloadLink` are required.' });
+  if (!downloadLink) {
+    return res.status(400).json({ error: '`downloadLink` is required.' });
+  }
+
+  // Email recipient locked to the verified token — cannot be spoofed via body
+  const to = req.userEmail;
+
+  // blobPath must belong to the authenticated user (path traversal prevention)
+  if (blobPath && !blobPath.startsWith(`${req.userId}/`)) {
+    return res.status(403).json({ error: 'Forbidden' });
   }
 
   let attachment = null;

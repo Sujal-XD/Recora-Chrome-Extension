@@ -3,10 +3,9 @@
 // Loaded by background.js via importScripts('transcription.js')
 // =============================================================================
 
-const DG_KEY  = '2d7fc109ad2274565153276a53cb91b1b5f8836d';
-const DG_BASE = 'https://api.deepgram.com/v1';
+const BACKEND = 'https://recora-chrome-extension.onrender.com';
 
-export async function transcribeAudio(blob) {
+export async function transcribeAudio(blob, authToken) {
   const params = new URLSearchParams({
     model:        'nova-2',
     diarize:      'true',
@@ -16,16 +15,16 @@ export async function transcribeAudio(blob) {
     smart_format: 'true',
   });
 
-  const res = await fetch(`${DG_BASE}/listen?${params}`, {
+  const res = await fetch(`${BACKEND}/transcribe?${params}`, {
     method:  'POST',
     headers: {
-      'Authorization': `Token ${DG_KEY}`,
-      'Content-Type':  'audio/webm',
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type':  blob.type || 'audio/webm',
     },
     body: blob,
   });
 
-  if (!res.ok) throw new Error(`Deepgram transcription failed: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Transcription failed: HTTP ${res.status}`);
 
   const data = await res.json();
   return {
