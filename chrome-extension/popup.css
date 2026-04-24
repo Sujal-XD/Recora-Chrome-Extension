@@ -810,31 +810,56 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
 .cal-detail-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
   flex-shrink: 0;
 }
 .cal-record-btn { flex-shrink: 0; }
+.cal-record-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(16,185,129,0.15);
+  box-shadow: none;
+  transform: none;
+}
 
-.cal-reschedule-btn {
+.cal-detail-secondary-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+.cal-action-btn {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 0.6rem 1rem;
+  gap: 6px;
+  padding: 0.55rem 0.75rem;
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.13);
   border-radius: 10px;
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
 }
-.cal-reschedule-btn:hover {
+.cal-action-btn:hover {
   border-color: var(--primary);
   color: var(--text-light);
   background: rgba(124,58,237,0.12);
+}
+.cal-nextmeet-btn { border-color: rgba(16,185,129,0.3); color: rgba(16,185,129,0.85); }
+.cal-nextmeet-btn:hover { border-color: #10b981; color: #10b981; background: rgba(16,185,129,0.1); }
+
+/* Upcoming section sub-header inside list */
+.cal-section-header {
+  padding: 0.1rem 0 0.35rem;
+}
+.cal-section-label {
+  font-size: 0.63rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: rgba(255,255,255,0.28);
 }
 
 /* Create Event Form */
@@ -1841,3 +1866,94 @@ input[type="time"].cal-input {
 .hist-folder-select:focus { border-color: var(--primary); }
 .hist-folder-select option { background: #1f2937; color: var(--text-light); }
 .ev-recorded-btn:hover { background: rgba(16,185,129,0.22); }
+
+/* ============================================================
+   Calendar — Guest chips + Meet toggle
+   ============================================================ */
+.cal-guests-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+.cal-guest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cal-guest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(124,58,237,0.18);
+  border: 1px solid rgba(124,58,237,0.35);
+  border-radius: 20px;
+  padding: 2px 8px 2px 10px;
+  font-size: 0.73rem;
+  color: var(--text-light);
+  max-width: 100%;
+}
+.cal-guest-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.cal-guest-chip-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.cal-guest-chip-remove:hover { color: #f87171; }
+
+.cal-guest-input {
+  font-size: 0.82rem;
+}
+
+/* Google Meet row */
+.cal-meet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  gap: 0.5rem;
+}
+.cal-meet-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+.cal-meet-toggle {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.cal-meet-toggle:hover {
+  border-color: rgba(66,133,244,0.6);
+  color: var(--text-light);
+}
+.cal-meet-toggle--active {
+  background: rgba(66,133,244,0.2);
+  border-color: rgba(66,133,244,0.6);
+  color: #93bbfd;
+}
+.cal-meet-toggle--active + .cal-meet-label,
+.cal-meet-row:has(.cal-meet-toggle--active) .cal-meet-label {
+  color: #93bbfd;
+}

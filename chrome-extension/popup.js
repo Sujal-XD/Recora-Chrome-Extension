@@ -72,8 +72,13 @@ const calDeleteEventBtn  = document.getElementById('calDeleteEventBtn');
 const calBackFromCreate = document.getElementById('calBackFromCreate');
 const calRecordEventBtn  = document.getElementById('calRecordEventBtn');
 const calRescheduleBtn   = document.getElementById('calRescheduleBtn');
+const calNextMeetBtn     = document.getElementById('calNextMeetBtn');
 const calFormHeading     = document.getElementById('calFormHeading');
 const calCreateForm      = document.getElementById('calCreateForm');
+const calGuestChips      = document.getElementById('calGuestChips');
+const calGuestInput      = document.getElementById('calGuestInput');
+const calAddMeetBtn      = document.getElementById('calAddMeetBtn');
+const calMeetLabel       = document.getElementById('calMeetLabel');
 const calEvtTitle       = document.getElementById('calEvtTitle');
 const calEvtDate        = document.getElementById('calEvtDate');
 const calEvtStart       = document.getElementById('calEvtStart');
@@ -95,10 +100,13 @@ let timerInterval = null;
 let elapsedBase   = 0;   // ms already elapsed when popup opened mid-recording
 let timerStart    = null; // Date.now() when we last started counting locally
 // Calendar state
-let calEvents       = [];
-let activeCalEvent  = null;
-let activeTab       = 'record'; // 'record' | 'calendar'
-let calFormMode     = 'create'; // 'create' | 'reschedule'
+let calEvents        = [];
+let activeCalEvent   = null;
+let activeTab        = 'record'; // 'record' | 'calendar'
+let calFormMode      = 'create'; // 'create' | 'reschedule'
+let calRecordingsMap = {};        // calEventRecordings from storage, kept in sync
+let calFormGuests    = [];        // array of email strings for current form
+let calFormAddMeet   = false;     // whether to create Google Meet link
 
 // ---------------------------------------------------------------------------
 // Timer helpers (display only — source of truth is background.js)
@@ -653,7 +661,7 @@ async function deleteCalendarEvent(eventId, calendarId = 'primary') {
   }
 }
 
-async function postCalendarEvent({ title, startIso, endIso, allDay, location, description }) {
+async function postCalendarEvent({ title, startIso, endIso, allDay, location, description, attendees, addMeet }) {
   const body = { summary: title };
   if (allDay) {
     body.start = { date: startIso };
@@ -662,13 +670,23 @@ async function postCalendarEvent({ title, startIso, endIso, allDay, location, de
     body.start = { dateTime: startIso };
     body.end   = { dateTime: endIso };
   }
-  if (location)    body.location    = location;
-  if (description) body.description = description;
+  if (location)      body.location    = location;
+  if (description)   body.description = description;
+  if (attendees?.length) body.attendees = attendees.map(e => ({ email: e }));
+  if (addMeet) {
+    body.conferenceData = {
+      createRequest: {
+        requestId: `meet_${Date.now()}`,
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
 
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events${addMeet ? '?conferenceDataVersion=1' : ''}`;
   const res = await calendarFetch(
-    'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+    url,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    true  // retry interactively on 403 to prompt for write scope
+    true
   );
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
@@ -677,7 +695,7 @@ async function postCalendarEvent({ title, startIso, endIso, allDay, location, de
   return res.json();
 }
 
-async function patchCalendarEvent(eventId, calendarId, { title, startIso, endIso, allDay, location, description }) {
+async function patchCalendarEvent(eventId, calendarId, { title, startIso, endIso, allDay, location, description, attendees, addMeet }) {
   const body = { summary: title };
   if (allDay) {
     body.start = { date: startIso };
@@ -688,9 +706,19 @@ async function patchCalendarEvent(eventId, calendarId, { title, startIso, endIso
   }
   if (location    !== undefined) body.location    = location;
   if (description !== undefined) body.description = description;
+  if (attendees?.length) body.attendees = attendees.map(e => ({ email: e }));
+  if (addMeet) {
+    body.conferenceData = {
+      createRequest: {
+        requestId: `meet_${Date.now()}`,
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
 
+  const qs = addMeet ? '?conferenceDataVersion=1' : '';
   const res = await calendarFetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}${qs}`,
     { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
     true
   );
@@ -777,8 +805,9 @@ function renderCalEvents(events, recordingsMap = {}) {
 
   // — Upcoming section —
   if (upcoming.length) {
+    html += `<div class="cal-section-header"><span class="cal-section-label">Upcoming</span></div>`;
     let lastDateKey = '';
-    upcoming.forEach(({ ev, idx }) => {
+    upcoming.forEach(({ ev, idx, isRecorded }) => {
       const dateKey = (ev.start.date || ev.start.dateTime || '').slice(0, 10);
       if (dateKey !== lastDateKey) {
         const d   = new Date(dateKey + 'T00:00:00');
@@ -816,8 +845,19 @@ function renderCalEvents(events, recordingsMap = {}) {
 
 function showEventDetail(event) {
   activeCalEvent = event;
-  // Hide delete button for calendars where user only has read access
   calDeleteEventBtn.style.display = event._canDelete === false ? 'none' : 'flex';
+
+  const isRecorded = Object.values(calRecordingsMap).some(v => v.event?.id === event.id);
+  if (isRecorded) {
+    calRecordEventBtn.disabled = true;
+    calRecordEventBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Already Recorded`;
+    calNextMeetBtn.style.display = 'flex';
+  } else {
+    calRecordEventBtn.disabled = false;
+    calRecordEventBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg> Record this Meeting`;
+    calNextMeetBtn.style.display = 'none';
+  }
+
   showCalView('detail');
   const color     = eventColor(event);
   const locHtml   = event.location
@@ -860,8 +900,9 @@ async function loadCalendar() {
       fetchCalendarEvents(),
       new Promise(r => chrome.storage.local.get(['calEventRecordings'], r)),
     ]);
-    calEvents = evts;
-    renderCalEvents(calEvents, stored.calEventRecordings || {});
+    calEvents        = evts;
+    calRecordingsMap = stored.calEventRecordings || {};
+    renderCalEvents(calEvents, calRecordingsMap);
   } catch (err) {
     calEventsList.innerHTML = `<div class="cal-empty"><small>${escapeHtml(err.message)}</small></div>`;
   } finally {
@@ -888,6 +929,109 @@ calDeleteEventBtn.onclick = async () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Calendar — guest chips + Meet toggle
+// ---------------------------------------------------------------------------
+function renderGuestChips() {
+  calGuestChips.innerHTML = calFormGuests.map((email, i) => `
+    <span class="cal-guest-chip">
+      <span class="cal-guest-chip-text">${escapeHtml(email)}</span>
+      <button type="button" class="cal-guest-chip-remove" data-i="${i}" aria-label="Remove">×</button>
+    </span>`).join('');
+  calGuestChips.querySelectorAll('.cal-guest-chip-remove').forEach(btn => {
+    btn.onclick = () => {
+      calFormGuests.splice(parseInt(btn.dataset.i), 1);
+      renderGuestChips();
+    };
+  });
+}
+
+function addGuestFromInput() {
+  const email = calGuestInput.value.trim().toLowerCase();
+  if (!email) return;
+  const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRx.test(email)) { calGuestInput.setCustomValidity('Invalid email'); calGuestInput.reportValidity(); return; }
+  calGuestInput.setCustomValidity('');
+  if (!calFormGuests.includes(email)) {
+    calFormGuests.push(email);
+    renderGuestChips();
+  }
+  calGuestInput.value = '';
+}
+
+calGuestInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addGuestFromInput(); }
+});
+calGuestInput.addEventListener('blur', () => { if (calGuestInput.value.trim()) addGuestFromInput(); });
+
+function updateMeetToggle() {
+  if (calFormAddMeet) {
+    calAddMeetBtn.textContent  = 'Remove';
+    calAddMeetBtn.classList.add('cal-meet-toggle--active');
+    calMeetLabel.textContent   = 'Google Meet added';
+  } else {
+    calAddMeetBtn.textContent  = 'Add';
+    calAddMeetBtn.classList.remove('cal-meet-toggle--active');
+    calMeetLabel.textContent   = 'Add Google Meet';
+  }
+}
+
+calAddMeetBtn.onclick = () => { calFormAddMeet = !calFormAddMeet; updateMeetToggle(); };
+
+function resetFormExtras() {
+  calFormGuests  = [];
+  calFormAddMeet = false;
+  renderGuestChips();
+  updateMeetToggle();
+}
+
+// ---------------------------------------------------------------------------
+// Calendar — Next Meet
+// ---------------------------------------------------------------------------
+calNextMeetBtn.onclick = () => {
+  if (!activeCalEvent) return;
+  calFormMode = 'create';
+  calFormHeading.textContent = 'Next Meet';
+
+  calEvtTitle.value = activeCalEvent.summary ? `Follow-up: ${activeCalEvent.summary}` : '';
+
+  const isAllDay = !!activeCalEvent.start.date;
+  const pad2     = n => String(n).padStart(2, '0');
+
+  let origDate;
+  if (isAllDay) {
+    const [y, m, d] = activeCalEvent.start.date.split('-').map(Number);
+    origDate = new Date(y, m - 1, d);
+  } else {
+    origDate = new Date(activeCalEvent.start.dateTime);
+  }
+  origDate.setDate(origDate.getDate() + 7);
+  calEvtDate.value = `${origDate.getFullYear()}-${pad2(origDate.getMonth() + 1)}-${pad2(origDate.getDate())}`;
+
+  calEvtAllDay.checked     = isAllDay;
+  calTimeRow.style.display = isAllDay ? 'none' : 'flex';
+  calEvtStart.required     = !isAllDay;
+  calEvtEnd.required       = !isAllDay;
+  if (!isAllDay) {
+    const s = new Date(activeCalEvent.start.dateTime);
+    const e = new Date(activeCalEvent.end.dateTime);
+    calEvtStart.value = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+    calEvtEnd.value   = `${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
+  }
+
+  calFormGuests = (activeCalEvent.attendees || [])
+    .map(a => a.email)
+    .filter(e => e && !e.endsWith('calendar.google.com'));
+  renderGuestChips();
+
+  calEvtLocation.value = activeCalEvent.location || '';
+  calEvtDesc.value     = '';
+  calFormAddMeet       = true;
+  updateMeetToggle();
+
+  showCalView('create');
+};
+
 calBackFromCreate.onclick = () => {
   if (calFormMode === 'reschedule') {
     showCalView('detail');
@@ -903,6 +1047,16 @@ calRescheduleBtn.onclick = () => {
   calEvtTitle.value    = activeCalEvent.summary || '';
   calEvtLocation.value = activeCalEvent.location || '';
   calEvtDesc.value     = activeCalEvent.description || '';
+
+  // Pre-fill guests from existing event attendees
+  calFormGuests = (activeCalEvent.attendees || [])
+    .map(a => a.email)
+    .filter(e => e && !e.endsWith('calendar.google.com'));
+  renderGuestChips();
+
+  // Pre-fill Meet state: active if event already has a Meet link
+  calFormAddMeet = !!activeCalEvent.hangoutLink;
+  updateMeetToggle();
 
   const isAllDay = !!activeCalEvent.start.date;
   calEvtAllDay.checked = isAllDay;
@@ -936,6 +1090,7 @@ calNewEventBtn.onclick = () => {
   calEvtLocation.value = '';
   calEvtDesc.value     = '';
   calEvtAllDay.checked = false;
+  resetFormExtras();
   calTimeRow.style.display = 'flex';
   calEvtStart.required = true;
   calEvtEnd.required   = true;
@@ -983,13 +1138,15 @@ calCreateForm.onsubmit = async (e) => {
   calCreateSubmit.disabled    = true;
   calCreateSubmit.textContent = 'Saving…';
 
+  const attendees = [...calFormGuests];
+  const addMeet   = calFormAddMeet;
+
   if (calFormMode === 'reschedule') {
-    // PATCH existing event
     try {
       await patchCalendarEvent(
         activeCalEvent.id,
         activeCalEvent._calendarId || 'primary',
-        { title, startIso, endIso, allDay, location, description: desc }
+        { title, startIso, endIso, allDay, location, description: desc, attendees, addMeet }
       );
     } catch (err) {
       const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
@@ -1017,16 +1174,15 @@ calCreateForm.onsubmit = async (e) => {
       end:     allDay ? { date: allDayEnd } : { dateTime: endIso },
       location: location || undefined,
       description: desc || undefined,
+      attendees: attendees.length ? attendees.map(e => ({ email: e })) : undefined,
       _calendarColor: 'var(--primary)',
       _canDelete: true,
     };
     calEvents = [optimisticEv, ...calEvents];
-    chrome.storage.local.get(['calEventRecordings'], stored => {
-      renderCalEvents(calEvents, stored.calEventRecordings || {});
-    });
+    renderCalEvents(calEvents, calRecordingsMap);
     showCalView('events');
 
-    await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso });
+    await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso, attendees, addMeet });
   } catch (err) {
     calEvents = calEvents.filter(ev => !ev.id?.startsWith('optimistic_'));
     const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
