@@ -39,6 +39,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         <span>History</span>
       </button>
+      <button id="navFolders" class="nav-tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <span>Folders</span>
+      </button>
     </nav>
 
     <!-- Main Content: Login or Recorder -->
@@ -207,28 +211,72 @@
           </div>
         </div>
 
-        <!-- Transcript View -->
-        <div id="histTranscriptView" class="hist-view" style="display: none;">
+        <!-- Detail View -->
+        <div id="histDetailView" class="hist-view" style="display: none;">
           <div class="cal-topbar">
-            <button id="histBackFromTranscript" class="cal-back-btn">
+            <button id="histBackFromDetail" class="cal-back-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
               Back
             </button>
-            <span class="cal-heading">Transcript</span>
+            <span class="cal-heading" id="histDetailHeading">Recording</span>
           </div>
-          <div id="histTranscriptContent" class="hist-scroll-content"></div>
+          <div id="histDetailContent" class="hist-detail-content"></div>
         </div>
 
-        <!-- Summary View -->
-        <div id="histSummaryView" class="hist-view" style="display: none;">
+      </div>
+
+      <!-- Folders Section -->
+      <div id="foldersSection" class="folders-section" style="display: none;">
+
+        <!-- Folder List View -->
+        <div id="foldersListView" class="folders-view">
           <div class="cal-topbar">
-            <button id="histBackFromSummary" class="cal-back-btn">
+            <span class="cal-heading">Folders</span>
+            <button id="folderNewBtn" class="cal-icon-btn" title="New Folder">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+          </div>
+          <div id="foldersList" class="folders-list"></div>
+        </div>
+
+        <!-- Folder Detail View (recordings inside) -->
+        <div id="folderDetailView" class="folders-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="folderBackBtn" class="cal-back-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
               Back
             </button>
-            <span class="cal-heading">Meeting Summary</span>
+            <span class="cal-heading" id="folderDetailName">Folder</span>
+            <div style="display:flex;gap:0.4rem;">
+              <button id="folderEditBtn" class="cal-icon-btn" title="Edit folder">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+              <button id="folderDeleteBtn" class="cal-delete-btn" title="Delete folder">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+              </button>
+            </div>
           </div>
-          <div id="histSummaryContent" class="hist-scroll-content"></div>
+          <div id="folderDetailRecords" class="hist-cards-list"></div>
+        </div>
+
+        <!-- Folder Create / Edit View -->
+        <div id="folderFormView" class="folders-view" style="display: none;">
+          <div class="cal-topbar">
+            <button id="folderFormBackBtn" class="cal-back-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Back
+            </button>
+            <span class="cal-heading" id="folderFormTitle">New Folder</span>
+          </div>
+          <div class="folders-form">
+            <label class="folders-form-label">Name</label>
+            <input id="folderFormName" type="text" class="folders-name-input" placeholder="Folder name…" maxlength="40" autocomplete="off">
+            <label class="folders-form-label" style="margin-top:0.9rem;">Color</label>
+            <div id="folderFormColors" class="folders-color-picker"></div>
+            <label class="folders-form-label" style="margin-top:0.9rem;">Icon</label>
+            <div id="folderFormIcons" class="folders-icon-picker"></div>
+            <button id="folderFormSaveBtn" class="btn-primary hover-lift" style="margin-top:1.1rem;">Save Folder</button>
+          </div>
         </div>
 
       </div>

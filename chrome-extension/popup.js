@@ -27,17 +27,34 @@ const recPreRecordForm = document.getElementById('recPreRecordForm');
 const recTitleInput    = document.getElementById('recTitleInput');
 const recDescInput     = document.getElementById('recDescInput');
 // --- History element refs ---
-const navHistory            = document.getElementById('navHistory');
-const historySection        = document.getElementById('historySection');
-const histListView          = document.getElementById('histListView');
-const histTranscriptView    = document.getElementById('histTranscriptView');
-const histSummaryView       = document.getElementById('histSummaryView');
-const histCardsList         = document.getElementById('histCardsList');
-const histTranscriptContent = document.getElementById('histTranscriptContent');
-const histSummaryContent    = document.getElementById('histSummaryContent');
-const histRefreshBtn        = document.getElementById('histRefreshBtn');
-const histBackFromTranscript = document.getElementById('histBackFromTranscript');
-const histBackFromSummary   = document.getElementById('histBackFromSummary');
+const navHistory        = document.getElementById('navHistory');
+const historySection    = document.getElementById('historySection');
+const histListView      = document.getElementById('histListView');
+const histCardsList     = document.getElementById('histCardsList');
+const histRefreshBtn    = document.getElementById('histRefreshBtn');
+const histDetailView    = document.getElementById('histDetailView');
+const histBackFromDetail = document.getElementById('histBackFromDetail');
+const histDetailHeading = document.getElementById('histDetailHeading');
+const histDetailContent = document.getElementById('histDetailContent');
+// --- Folders element refs ---
+const navFolders        = document.getElementById('navFolders');
+const foldersSection    = document.getElementById('foldersSection');
+const foldersListView   = document.getElementById('foldersListView');
+const folderDetailView  = document.getElementById('folderDetailView');
+const folderFormView    = document.getElementById('folderFormView');
+const foldersList       = document.getElementById('foldersList');
+const folderDetailRecords = document.getElementById('folderDetailRecords');
+const folderDetailName  = document.getElementById('folderDetailName');
+const folderNewBtn      = document.getElementById('folderNewBtn');
+const folderBackBtn     = document.getElementById('folderBackBtn');
+const folderEditBtn     = document.getElementById('folderEditBtn');
+const folderDeleteBtn   = document.getElementById('folderDeleteBtn');
+const folderFormBackBtn = document.getElementById('folderFormBackBtn');
+const folderFormTitle   = document.getElementById('folderFormTitle');
+const folderFormName    = document.getElementById('folderFormName');
+const folderFormColors  = document.getElementById('folderFormColors');
+const folderFormIcons   = document.getElementById('folderFormIcons');
+const folderFormSaveBtn = document.getElementById('folderFormSaveBtn');
 // --- Calendar element refs ---
 const mainNav           = document.getElementById('mainNav');
 const navRecord         = document.getElementById('navRecord');
@@ -167,9 +184,11 @@ function showTab(tab) {
   navRecord.classList.toggle('active',   tab === 'record');
   navCalendar.classList.toggle('active', tab === 'calendar');
   navHistory.classList.toggle('active',  tab === 'history');
+  navFolders.classList.toggle('active',  tab === 'folders');
   recorderSection.style.display = tab === 'record'   ? 'flex' : 'none';
   calendarSection.style.display = tab === 'calendar' ? 'flex' : 'none';
   historySection.style.display  = tab === 'history'  ? 'flex' : 'none';
+  foldersSection.style.display  = tab === 'folders'  ? 'flex' : 'none';
 }
 
 function renderProfileBtn(user) {
@@ -236,6 +255,7 @@ function updateUI(user) {
     recorderSection.style.display  = 'none';
     calendarSection.style.display  = 'none';
     historySection.style.display   = 'none';
+    foldersSection.style.display   = 'none';
     consentSection.style.display   = 'none';
     mainNav.style.display          = 'none';
     userInfoDiv.innerHTML          = '';
@@ -861,19 +881,20 @@ calCreateForm.onsubmit = async (e) => {
 navHistory.onclick = () => { showTab('history'); loadHistory(); };
 
 function showHistView(view) {
-  histListView.style.display       = view === 'list'       ? 'flex' : 'none';
-  histTranscriptView.style.display = view === 'transcript' ? 'flex' : 'none';
-  histSummaryView.style.display    = view === 'summary'    ? 'flex' : 'none';
+  histListView.style.display   = view === 'list'   ? 'flex' : 'none';
+  histDetailView.style.display = view === 'detail' ? 'flex' : 'none';
 }
 
-histBackFromTranscript.onclick = () => showHistView('list');
-histBackFromSummary.onclick    = () => showHistView('list');
-histRefreshBtn.onclick         = () => loadHistory();
+histRefreshBtn.onclick   = () => loadHistory();
+histBackFromDetail.onclick = () => showHistView('list');
 
 // ---------------------------------------------------------------------------
 // History — rendering
 // ---------------------------------------------------------------------------
-let histRecordings = [];
+let histRecordings  = [];
+let histFolders     = [];
+let histActiveRec   = null;
+let histDetailTab   = 'transcript';
 
 function formatDuration(dur) {
   if (!dur) return '--:--';
@@ -895,7 +916,140 @@ function speakerColorClass(speaker) {
   return SPKR_COLORS.includes(letter) ? `hist-speaker-${letter}` : 'hist-speaker-A';
 }
 
-function renderHistoryCards(recs) {
+function buildSummaryHtml(s) {
+  function section(title, cls, items, bullet) {
+    if (!items || !items.length) return '';
+    return `<div class="hist-summary-section">
+      <div class="hist-summary-section-title ${cls}">${title}</div>
+      ${items.map(it => `<div class="hist-summary-item"><span class="hist-summary-bullet">${bullet}</span><span>${escapeHtml(it)}</span></div>`).join('')}
+    </div>`;
+  }
+  return (
+    section('Key Points',   'kp',  s.key_points,   '▸') +
+    section('Decisions',    'dec', s.decisions,    '✓') +
+    section('Action Items', 'ai',  s.action_items, '→')
+  ) || '<div class="hist-empty" style="padding:0.6rem 0;font-size:0.78rem;">No summary available.</div>';
+}
+
+// Shared MOM builder — professional format used by both paths
+function buildMOM(rec, calEvent) {
+  const DIVIDER = '═'.repeat(46);
+  const pad     = (label, value) => `${label.padEnd(12)}: ${value}`;
+  const s       = rec.summary || {};
+  const hasData = (s.key_points?.length || s.decisions?.length || s.action_items?.length);
+
+  const title    = rec.title || 'Recording';
+  const dateStr  = rec.date
+    ? new Date(rec.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : 'Unknown';
+  const timeStr  = rec.date
+    ? new Date(rec.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const dur      = formatDuration(rec.duration);
+
+  const lines = [
+    'MINUTES OF MEETING',
+    DIVIDER,
+    pad('Meeting', title),
+    pad('Date', dateStr),
+  ];
+  if (timeStr)  lines.push(pad('Time', timeStr));
+  lines.push(pad('Duration', dur));
+
+  if (calEvent?.location)  lines.push(pad('Location', calEvent.location));
+  if (calEvent?.hangoutLink) lines.push(pad('Link', calEvent.hangoutLink));
+  if (rec.description)     lines.push(pad('Notes', rec.description));
+
+  lines.push(pad('Prepared by', 'Recora'));
+  lines.push('');
+  lines.push(DIVIDER);
+
+  // Attendees
+  const attendees = calEvent?.attendees || [];
+  if (attendees.length) {
+    lines.push('');
+    lines.push('ATTENDEES');
+    attendees.forEach(a => {
+      const name  = a.displayName || a.email || String(a);
+      const role  = a.organizer ? ' (Organiser)' : a.optional ? ' (Optional)' : '';
+      const email = a.displayName && a.email ? ` <${a.email}>` : '';
+      lines.push(`  • ${name}${email}${role}`);
+    });
+  } else if (rec.transcript?.length) {
+    lines.push('');
+    lines.push('PARTICIPANTS');
+    [...new Set(rec.transcript.map(u => u.speaker))].forEach(sp => lines.push(`  • ${sp}`));
+  }
+
+  // Key discussion points
+  if ((s.key_points || []).length) {
+    lines.push('');
+    lines.push('KEY DISCUSSION POINTS');
+    s.key_points.forEach(kp => lines.push(`  ▸  ${kp}`));
+  }
+
+  // Decisions
+  if ((s.decisions || []).length) {
+    lines.push('');
+    lines.push('DECISIONS MADE');
+    s.decisions.forEach((d, i) => lines.push(`  ${i + 1}. ✓  ${d}`));
+  }
+
+  // Action items
+  if ((s.action_items || []).length) {
+    lines.push('');
+    lines.push('ACTION ITEMS');
+    s.action_items.forEach((a, i) => lines.push(`  ${i + 1}. →  ${a}`));
+  }
+
+  if (!hasData) {
+    lines.push('');
+    lines.push('  (No summary data available — transcription may still be processing.)');
+  }
+
+  lines.push('');
+  lines.push(DIVIDER);
+  lines.push(`Generated by Recora on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`);
+
+  return lines.join('\n');
+}
+
+function generateMOM(rec)                    { return buildMOM(rec, null); }
+function generateMOMWithEvent(rec, calEvent) { return buildMOM(rec, calEvent); }
+
+function buildTranscriptText(rec) {
+  if (!rec.transcript || !rec.transcript.length) return 'No transcript available.';
+  return rec.transcript.map(u => `[${u.timestamp}] ${u.speaker}:\n${u.text}`).join('\n\n');
+}
+
+function buildSummaryText(rec) {
+  const s = rec.summary || {};
+  const lines = [`MEETING SUMMARY — ${rec.title || 'Recording'}`, '─'.repeat(38)];
+  if ((s.key_points || []).length) {
+    lines.push('', 'KEY POINTS');
+    s.key_points.forEach(kp => lines.push(`  ▸ ${kp}`));
+  }
+  if ((s.decisions || []).length) {
+    lines.push('', 'DECISIONS');
+    s.decisions.forEach(d => lines.push(`  ✓ ${d}`));
+  }
+  if ((s.action_items || []).length) {
+    lines.push('', 'ACTION ITEMS');
+    s.action_items.forEach(a => lines.push(`  → ${a}`));
+  }
+  if (lines.length <= 2) lines.push('', '(No summary data available)');
+  return lines.join('\n');
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  chrome.downloads.download({ url, filename, saveAs: false }, () => {
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  });
+}
+
+function renderHistoryCards(recs, folders) {
   if (!recs.length) {
     histCardsList.innerHTML = `
       <div class="hist-empty">
@@ -905,34 +1059,25 @@ function renderHistoryCards(recs) {
     return;
   }
 
+  const foldersArr = folders || [];
   histCardsList.innerHTML = recs.map((rec, i) => {
-    const s = rec.status || 'processing';
-    const isDone   = s === 'done';
-    const isInProg = s === 'transcribing' || s === 'processing';
-    const isFailed = s === 'upload_failed' || s === 'transcription_failed';
-    const badgeCls = isDone ? 'done' : isInProg ? 'transcribing' : isFailed ? 'failed' : 'transcribing';
-    const badgeLbl = isDone ? 'Done'
-                   : s === 'transcribing'        ? 'Transcribing…'
-                   : s === 'upload_failed'       ? 'Upload Failed'
-                   : s === 'transcription_failed'? 'Transcript Failed'
-                   : 'Processing…';
-    const hasT = rec.transcript && rec.transcript.length > 0;
-    const hasS = rec.summary && (
-      (rec.summary.key_points   || []).length +
-      (rec.summary.decisions    || []).length +
-      (rec.summary.action_items || []).length > 0
-    );
-    const hasAudio = !!rec.audio_url;
-    const hasWav   = !!rec.wav_url;
-    const errHtml  = (s === 'transcription_failed' && rec.transcription_error)
-      ? `<div class="hist-card-error">${escapeHtml(rec.transcription_error)}</div>` : '';
+    const s       = rec.status || 'processing';
+    const badgeCls = s === 'done' ? 'done' : (s === 'transcribing' || s === 'processing') ? 'transcribing' : 'failed';
+    const badgeLbl = s === 'done' ? 'Done'
+      : s === 'transcribing'         ? 'Transcribing…'
+      : s === 'upload_failed'        ? 'Upload Failed'
+      : s === 'transcription_failed' ? 'Failed'
+      : 'Processing…';
+    const folder      = foldersArr.find(f => f.id === rec.folderId);
+    const folderBadge = folder
+      ? `<span class="hist-folder-badge" style="border-color:${folder.color}40;color:${folder.color}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>${escapeHtml(folder.name)}</span>` : '';
     return `
-      <div class="hist-card">
-        <div class="hist-card-header">
-          <div class="hist-card-title">${escapeHtml(rec.title || 'Recording')}</div>
+      <div class="hist-card" data-idx="${i}">
+        <div class="hist-card-title-row">
+          <span class="hist-card-title">${escapeHtml(rec.title || 'Recording')}</span>
           <span class="hist-status-badge ${badgeCls}">${badgeLbl}</span>
+          <svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </div>
-        ${rec.description ? `<div class="hist-card-desc">${escapeHtml(rec.description)}</div>` : ''}
         <div class="hist-card-meta">
           <span>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -942,45 +1087,197 @@ function renderHistoryCards(recs) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             ${escapeHtml(formatDuration(rec.duration))}
           </span>
-        </div>
-        ${errHtml}
-        <div class="hist-card-actions">
-          <button class="hist-action-btn" data-idx="${i}" data-act="transcript" ${!hasT ? 'disabled' : ''}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
-            Transcript
-          </button>
-          <button class="hist-action-btn" data-idx="${i}" data-act="summary" ${!hasS ? 'disabled' : ''}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            Summary
-          </button>
-          <button class="hist-action-btn" data-idx="${i}" data-act="dl-webm" ${!hasAudio ? 'disabled' : ''}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            WebM
-          </button>
-          <button class="hist-action-btn" data-idx="${i}" data-act="dl-wav" ${!hasAudio && !hasWav ? 'disabled' : ''}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            WAV
-          </button>
-          <button class="hist-action-btn danger" data-idx="${i}" data-act="delete">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
-            Delete
-          </button>
+          ${folderBadge}
         </div>
       </div>`;
   }).join('');
 
-  histCardsList.querySelectorAll('[data-act]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const rec  = histRecordings[parseInt(btn.dataset.idx)];
-      const card = btn.closest('.hist-card');
-      if (btn.dataset.act === 'transcript') showTranscriptView(rec);
-      if (btn.dataset.act === 'summary')    showSummaryView(rec);
-      if (btn.dataset.act === 'dl-webm')    downloadWebm(rec);
-      if (btn.dataset.act === 'dl-wav')     downloadWav(btn, rec);
-      if (btn.dataset.act === 'delete')     deleteHistRecording(rec.id, card, btn);
+  histCardsList.querySelectorAll('.hist-card').forEach(card => {
+    card.addEventListener('click', () => {
+      showHistDetail(histRecordings[parseInt(card.dataset.idx)]);
     });
   });
 }
+
+function showHistDetail(rec) {
+  histActiveRec = rec;
+  histDetailTab = 'transcript';
+  histDetailHeading.textContent = rec.title || 'Recording';
+  showHistView('detail');
+  renderHistDetailContent(rec);
+}
+
+function renderHistDetailContent(rec) {
+  const s        = rec.status || 'processing';
+  const badgeCls = s === 'done' ? 'done' : (s === 'transcribing' || s === 'processing') ? 'transcribing' : 'failed';
+  const badgeLbl = s === 'done' ? 'Done'
+    : s === 'transcribing'         ? 'Transcribing…'
+    : s === 'upload_failed'        ? 'Upload Failed'
+    : s === 'transcription_failed' ? 'Failed'
+    : 'Processing…';
+  const hasT = rec.transcript && rec.transcript.length > 0;
+  const hasS = rec.summary && (
+    (rec.summary.key_points   || []).length +
+    (rec.summary.decisions    || []).length +
+    (rec.summary.action_items || []).length > 0
+  );
+
+  const transcriptHtml = hasT
+    ? rec.transcript.map(u => `<div class="hist-utterance">
+        <div class="hist-speaker-col">
+          <span class="hist-speaker-name ${speakerColorClass(u.speaker)}">${escapeHtml(u.speaker)}</span>
+          <span class="hist-timestamp">${escapeHtml(u.timestamp)}</span>
+        </div>
+        <div class="hist-utt-text">${escapeHtml(u.text)}</div>
+      </div>`).join('')
+    : `<div class="hist-empty" style="padding:0.8rem 0;">No transcript available.</div>`;
+
+  const summaryHtml = hasS
+    ? buildSummaryHtml(rec.summary)
+    : `<div class="hist-empty" style="padding:0.8rem 0;">No summary available.</div>`;
+
+  // MOM — include linked calendar event attendees if available
+  chrome.storage.local.get(['calEventRecordings'], result => {
+    const linkMap   = result.calEventRecordings || {};
+    const calEvent  = Object.values(linkMap).find(v => v.recordingId === rec.id)?.event || null;
+    const momText   = generateMOMWithEvent(rec, calEvent);
+    const momHtml   = `<div class="hist-mom-body">${escapeHtml(momText)}</div>`;
+
+    const tab = histDetailTab;
+    histDetailContent.innerHTML = `
+      <div class="hist-detail-header">
+        <div class="hist-detail-title">${escapeHtml(rec.title || 'Recording')}</div>
+        <span class="hist-status-badge ${badgeCls}">${badgeLbl}</span>
+      </div>
+      <div class="hist-detail-meta-row">
+        <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>${escapeHtml(formatRecDate(rec.date))}</span>
+        <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHtml(formatDuration(rec.duration))}</span>
+      </div>
+      ${rec.description ? `<div class="hist-detail-desc">${escapeHtml(rec.description)}</div>` : ''}
+      ${s === 'transcription_failed' && rec.transcription_error ? `<div class="hist-card-error" style="padding:0.4rem 0">${escapeHtml(rec.transcription_error)}</div>` : ''}
+      <div class="hist-tabs">
+        <button class="hist-tab${tab==='transcript'?' active':''}" data-dtab="transcript">Transcript</button>
+        <button class="hist-tab${tab==='summary'?' active':''}" data-dtab="summary">Summary</button>
+        <button class="hist-tab${tab==='mom'?' active':''}" data-dtab="mom">MOM</button>
+      </div>
+      <div class="hist-detail-tab-content">
+        <div class="hist-tab-pane${tab==='transcript'?' active':''}" data-dpane="transcript">${transcriptHtml}</div>
+        <div class="hist-tab-pane${tab==='summary'?' active':''}" data-dpane="summary">${summaryHtml}</div>
+        <div class="hist-tab-pane${tab==='mom'?' active':''}" data-dpane="mom">${momHtml}</div>
+      </div>
+      <div class="hist-download-section">
+        <div class="hist-download-label">Download</div>
+        <div class="hist-download-row">
+          <button class="hist-download-btn" data-dl="transcript" ${!hasT ? 'disabled' : ''}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
+            Transcript
+          </button>
+          <button class="hist-download-btn" data-dl="summary" ${!hasS ? 'disabled' : ''}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Summary
+          </button>
+          <button class="hist-download-btn" data-dl="mom">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="12" y2="17"></line></svg>
+            MOM
+          </button>
+          <button class="hist-download-btn" data-dl="webm" ${!rec.audio_url ? 'disabled' : ''}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            WebM
+          </button>
+          <button class="hist-download-btn wav-btn" data-dl="wav" ${!rec.audio_url && !rec.wav_url ? 'disabled' : ''}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            WAV
+          </button>
+        </div>
+      </div>
+      <div class="hist-folder-assign">
+        <label class="hist-folder-assign-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Folder
+        </label>
+        <select class="hist-folder-select" id="histFolderSelect">
+          <option value="">— None —</option>
+        </select>
+      </div>
+      <button class="hist-detail-delete-btn" id="histDetailDeleteBtn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+        Delete Recording
+      </button>`;
+
+    // Tab switching
+    histDetailContent.querySelectorAll('[data-dtab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        histDetailTab = btn.dataset.dtab;
+        histDetailContent.querySelectorAll('[data-dtab]').forEach(t => t.classList.remove('active'));
+        histDetailContent.querySelectorAll('[data-dpane]').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        histDetailContent.querySelector(`[data-dpane="${btn.dataset.dtab}"]`).classList.add('active');
+      });
+    });
+
+    // Download buttons
+    const safe = (rec.title || 'recording').replace(/[^a-z0-9_\-]/gi, '_');
+    histDetailContent.querySelectorAll('[data-dl]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        switch (btn.dataset.dl) {
+          case 'transcript': downloadTextFile(`${safe}_transcript.txt`, buildTranscriptText(rec)); break;
+          case 'summary':    downloadTextFile(`${safe}_summary.txt`,    buildSummaryText(rec));    break;
+          case 'mom':        downloadTextFile(`${safe}_mom.txt`,        generateMOMWithEvent(rec, calEvent)); break;
+          case 'webm':       downloadWebm(rec); break;
+          case 'wav':        downloadWav(btn, rec); break;
+        }
+      });
+    });
+
+    // Delete with confirm
+    const deleteBtn = document.getElementById('histDetailDeleteBtn');
+    deleteBtn.addEventListener('click', () => {
+      if (!deleteBtn._confirmPending) {
+        deleteBtn._confirmPending = true;
+        deleteBtn.textContent = 'Confirm delete?';
+        setTimeout(() => {
+          if (deleteBtn._confirmPending) {
+            deleteBtn._confirmPending = false;
+            deleteBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg> Delete Recording`;
+          }
+        }, 3000);
+        return;
+      }
+      deleteBtn._confirmPending = false;
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting…';
+      showHistView('list');
+      doDeleteRecording(rec.id);
+    });
+
+    // Folder assign select
+    const folderSelect = document.getElementById('histFolderSelect');
+    if (folderSelect) {
+      chrome.storage.local.get(['histFolders'], result => {
+        const folders = result.histFolders || [];
+        folderSelect.innerHTML = `<option value="">— None —</option>` +
+          folders.map(f => `<option value="${escapeHtml(f.id)}"${rec.folderId === f.id ? ' selected' : ''}>${escapeHtml(f.name)}</option>`).join('');
+        folderSelect.onchange = () => {
+          const newFolderId = folderSelect.value || null;
+          // Update in local storage
+          chrome.storage.local.get(['recordings'], r => {
+            const recs = (r.recordings || []).map(rx =>
+              rx.id === rec.id ? { ...rx, folderId: newFolderId } : rx
+            );
+            chrome.storage.local.set({ recordings: recs });
+          });
+          // Also update histRecordings in memory
+          histRecordings = histRecordings.map(rx =>
+            rx.id === rec.id ? { ...rx, folderId: newFolderId } : rx
+          );
+          // Sync to Azure (best-effort)
+          azureSyncRecordings(histRecordings);
+        };
+      });
+    }
+  });
+}
+
 
 function openHistAudio(rec) {
   if (rec.audio_url) chrome.tabs.create({ url: rec.audio_url });
@@ -1072,11 +1369,27 @@ function downloadWebm(rec) {
   }
 }
 
+function doDeleteRecording(recId) {
+  // Always delete locally — never restore on Azure failure.
+  // Azure sync is best-effort metadata sync, not the deletion gate.
+  histRecordings = histRecordings.filter(r => r.id !== recId);
+  showHistView('list');
+  renderHistoryCards(histRecordings, histFolders);
+
+  chrome.storage.local.get(['recordings'], result => {
+    const recs = (result.recordings || []).filter(r => r.id !== recId);
+    chrome.storage.local.set({ recordings: recs });
+  });
+
+  // Best-effort Azure metadata sync — failure is silent, local delete already done
+  azureSyncRecordings(histRecordings).catch(() => {});
+}
+
 function deleteHistRecording(recId, cardEl, confirmBtn) {
   if (!confirmBtn._confirmPending) {
     confirmBtn._confirmPending = true;
     confirmBtn.textContent = 'Sure?';
-    confirmBtn.style.color  = 'var(--danger)';
+    confirmBtn.style.color = 'var(--danger)';
     confirmBtn.style.borderColor = 'rgba(239,68,68,0.4)';
     setTimeout(() => {
       if (confirmBtn._confirmPending) {
@@ -1088,85 +1401,12 @@ function deleteHistRecording(recId, cardEl, confirmBtn) {
     }, 3000);
     return;
   }
-  // Second click — actually delete
   confirmBtn._confirmPending = false;
   confirmBtn.disabled = true;
   confirmBtn.textContent = 'Deleting…';
-
-  // Optimistically remove from in-memory list and re-render
-  const snapshot = [...histRecordings]; // keep a copy in case we need to roll back
-  histRecordings = histRecordings.filter(r => r.id !== recId);
-  renderHistoryCards(histRecordings);
-
-  // Remove from local storage (covers in-progress entries)
-  chrome.storage.local.get(['recordings'], result => {
-    const recs = (result.recordings || []).filter(r => r.id !== recId);
-    chrome.storage.local.set({ recordings: recs });
-  });
-
-  // Persist deletion to Azure — roll back and show error if it fails
-  azureSyncRecordings(histRecordings).then(ok => {
-    if (!ok) {
-      // Azure sync failed — restore the list so the recording isn't lost
-      histRecordings = snapshot;
-      renderHistoryCards(histRecordings);
-      // Also restore local storage
-      chrome.storage.local.get(['recordings'], result => {
-        const recs = result.recordings || [];
-        if (!recs.find(r => r.id === recId)) {
-          recs.push(snapshot.find(r => r.id === recId));
-          chrome.storage.local.set({ recordings: recs });
-        }
-      });
-      const errDiv = document.createElement('div');
-      errDiv.style.cssText = 'color:var(--danger);font-size:0.78rem;padding:8px 12px;text-align:center;';
-      errDiv.textContent   = 'Delete failed — make sure the backend server is running and try again.';
-      histCardsList.prepend(errDiv);
-      setTimeout(() => errDiv.remove(), 5000);
-    }
-  });
+  doDeleteRecording(recId);
 }
 
-function showTranscriptView(rec) {
-  showHistView('transcript');
-  if (!rec.transcript || !rec.transcript.length) {
-    histTranscriptContent.innerHTML = '<div class="hist-empty">No transcript available.</div>';
-    return;
-  }
-  histTranscriptContent.innerHTML = rec.transcript.map(u => `
-    <div class="hist-utterance">
-      <div class="hist-speaker-col">
-        <span class="hist-speaker-name ${speakerColorClass(u.speaker)}">${escapeHtml(u.speaker)}</span>
-        <span class="hist-timestamp">${escapeHtml(u.timestamp)}</span>
-      </div>
-      <div class="hist-utt-text">${escapeHtml(u.text)}</div>
-    </div>`).join('');
-}
-
-function showSummaryView(rec) {
-  showHistView('summary');
-  const s = rec.summary || {};
-
-  function section(title, cls, items, bullet) {
-    if (!items || !items.length) return '';
-    return `
-      <div class="hist-summary-section">
-        <div class="hist-summary-section-title ${cls}">${title}</div>
-        ${items.map(it => `
-          <div class="hist-summary-item">
-            <span class="hist-summary-bullet">${bullet}</span>
-            <span>${escapeHtml(it)}</span>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  const html =
-    section('Key Points',   'kp',  s.key_points,   '▸') +
-    section('Decisions',    'dec', s.decisions,    '✓') +
-    section('Action Items', 'ai',  s.action_items, '→');
-
-  histSummaryContent.innerHTML = html || '<div class="hist-empty">No summary available yet.</div>';
-}
 
 // ---------------------------------------------------------------------------
 // Azure metadata sync — stores recordings.json alongside audio in Azure Blob
@@ -1239,31 +1479,303 @@ async function loadHistory() {
   showHistView('list');
   histRefreshBtn.classList.add('spinning');
   try {
-    // Azure is the source of truth — scoped to currentUser.sub.
     const azureRecs = await azureLoadRecordings();
 
-    const localResult = await new Promise(resolve =>
-      chrome.storage.local.get(['recordings'], resolve)
-    );
+    const [localResult, foldersResult] = await Promise.all([
+      new Promise(resolve => chrome.storage.local.get(['recordings'], resolve)),
+      new Promise(resolve => chrome.storage.local.get(['histFolders'],  resolve)),
+    ]);
 
-    // Include recordings that are:
-    //   a) still being processed/transcribing (not in Azure yet), OR
-    //   b) recently finished but not yet synced to Azure (race condition:
-    //      transcription_done fires before syncMetadataToAzure completes)
-    const azureIds = new Set(azureRecs.map(r => r.id));
+    const azureIds    = new Set(azureRecs.map(r => r.id));
     const localToShow = (localResult.recordings || []).filter(r =>
       r.userId === currentUser?.sub &&
       (r.status === 'processing' || r.status === 'transcribing' || !azureIds.has(r.id))
     );
 
     histRecordings = mergeRecordings(localToShow, azureRecs);
-    renderHistoryCards(histRecordings);
+    histFolders    = foldersResult.histFolders || [];
+    renderHistoryCards(histRecordings, histFolders);
   } catch (err) {
     histCardsList.innerHTML = `<div class="hist-empty"><small>${escapeHtml(err.message)}</small></div>`;
   } finally {
     histRefreshBtn.classList.remove('spinning');
   }
 }
+
+// ---------------------------------------------------------------------------
+// Folders — constants
+// ---------------------------------------------------------------------------
+const FOLDER_COLORS = [
+  '#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0b',
+  '#ef4444','#3b82f6','#a78bfa','#f97316','#6366f1',
+];
+
+const FOLDER_ICONS = [
+  { id: 'folder',  svg: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>' },
+  { id: 'star',    svg: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>' },
+  { id: 'work',    svg: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>' },
+  { id: 'mic',     svg: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line>' },
+  { id: 'user',    svg: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>' },
+  { id: 'book',    svg: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>' },
+  { id: 'heart',   svg: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>' },
+  { id: 'tag',     svg: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>' },
+];
+
+// ---------------------------------------------------------------------------
+// Folders — state
+// ---------------------------------------------------------------------------
+let foldersList_data = [];  // array of { id, name, color, icon }
+let activeFolderId   = null;
+
+// ---------------------------------------------------------------------------
+// Folders — helpers
+// ---------------------------------------------------------------------------
+function showFolderView(view) {
+  foldersListView.style.display  = view === 'list'   ? 'flex' : 'none';
+  folderDetailView.style.display = view === 'detail' ? 'flex' : 'none';
+  folderFormView.style.display   = view === 'form'   ? 'flex' : 'none';
+}
+
+function loadFolders(callback) {
+  chrome.storage.local.get(['histFolders'], result => {
+    foldersList_data = result.histFolders || [];
+    if (callback) callback(foldersList_data);
+  });
+}
+
+function saveFolders(folders, callback) {
+  chrome.storage.local.set({ histFolders: folders }, callback);
+}
+
+function renderFolderList() {
+  if (!foldersList_data.length) {
+    foldersList.innerHTML = `
+      <div class="hist-empty" style="padding:1.5rem 0;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.25;display:block;margin:0 auto 0.6rem"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        No folders yet.<br><small>Create one to organise your recordings.</small>
+      </div>`;
+    return;
+  }
+
+  chrome.storage.local.get(['recordings'], result => {
+    const recs = result.recordings || [];
+    foldersList.innerHTML = foldersList_data.map((f, i) => {
+      const count   = recs.filter(r => r.folderId === f.id).length;
+      const iconDef = FOLDER_ICONS.find(ic => ic.id === f.icon) || FOLDER_ICONS[0];
+      return `
+        <div class="folder-card" data-fidx="${i}">
+          <div class="folder-card-icon" style="color:${f.color}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconDef.svg}</svg>
+          </div>
+          <div class="folder-card-info">
+            <div class="folder-card-name">${escapeHtml(f.name)}</div>
+            <div class="folder-card-meta">${count} recording${count !== 1 ? 's' : ''}</div>
+          </div>
+          <svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </div>`;
+    }).join('');
+
+    foldersList.querySelectorAll('.folder-card').forEach(card => {
+      card.onclick = () => openFolderDetail(foldersList_data[parseInt(card.dataset.fidx)]);
+    });
+  });
+}
+
+function openFolderDetail(folder) {
+  activeFolderId = folder.id;
+  folderDetailName.textContent = folder.name;
+  showFolderView('detail');
+
+  chrome.storage.local.get(['recordings'], result => {
+    const recs = (result.recordings || []).filter(r => r.folderId === folder.id);
+    if (!recs.length) {
+      folderDetailRecords.innerHTML = `<div class="hist-empty" style="padding:1rem 0;">No recordings in this folder.</div>`;
+      return;
+    }
+    folderDetailRecords.innerHTML = recs.map((rec, i) => {
+      const s       = rec.status || 'processing';
+      const badgeCls = s === 'done' ? 'done' : (s === 'transcribing' || s === 'processing') ? 'transcribing' : 'failed';
+      const badgeLbl = s === 'done' ? 'Done' : s === 'transcribing' ? 'Transcribing…' : s === 'upload_failed' ? 'Upload Failed' : s === 'transcription_failed' ? 'Failed' : 'Processing…';
+      return `
+        <div class="hist-card" data-ridx="${i}">
+          <div class="hist-card-title-row">
+            <span class="hist-card-title">${escapeHtml(rec.title || 'Recording')}</span>
+            <span class="hist-status-badge ${badgeCls}">${badgeLbl}</span>
+            <svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </div>
+          <div class="hist-card-meta">
+            <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>${escapeHtml(formatRecDate(rec.date))}</span>
+            <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHtml(formatDuration(rec.duration))}</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    folderDetailRecords.querySelectorAll('.hist-card').forEach(card => {
+      card.onclick = () => {
+        showTab('history');
+        const allRecs = [...histRecordings];
+        const rec = recs[parseInt(card.dataset.ridx)];
+        const match = allRecs.find(r => r.id === rec.id) || rec;
+        showHistDetail(match);
+      };
+    });
+  });
+}
+
+function buildFolderForm(folder) {
+  let selectedColor = folder?.color || FOLDER_COLORS[0];
+  let selectedIcon  = folder?.icon  || FOLDER_ICONS[0].id;
+
+  folderFormColors.innerHTML = FOLDER_COLORS.map(c =>
+    `<button type="button" class="folders-color-swatch${c === selectedColor ? ' selected' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+  ).join('');
+
+  folderFormIcons.innerHTML = FOLDER_ICONS.map(ic =>
+    `<button type="button" class="folders-icon-swatch${ic.id === selectedIcon ? ' selected' : ''}" data-icon="${ic.id}">
+       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic.svg}</svg>
+     </button>`
+  ).join('');
+
+  folderFormColors.querySelectorAll('.folders-color-swatch').forEach(sw => {
+    sw.onclick = () => {
+      folderFormColors.querySelectorAll('.folders-color-swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+      selectedColor = sw.dataset.color;
+      folderFormSaveBtn._selectedColor = selectedColor;
+    };
+  });
+
+  folderFormIcons.querySelectorAll('.folders-icon-swatch').forEach(sw => {
+    sw.onclick = () => {
+      folderFormIcons.querySelectorAll('.folders-icon-swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+      selectedIcon = sw.dataset.icon;
+      folderFormSaveBtn._selectedIcon = selectedIcon;
+    };
+  });
+
+  folderFormSaveBtn._selectedColor = selectedColor;
+  folderFormSaveBtn._selectedIcon  = selectedIcon;
+}
+
+function openFolderCreateForm() {
+  folderFormTitle.textContent = 'New Folder';
+  folderFormName.value = '';
+  folderFormSaveBtn._editingId = null;
+  buildFolderForm(null);
+  showFolderView('form');
+}
+
+function openFolderEditForm(folder) {
+  folderFormTitle.textContent = 'Edit Folder';
+  folderFormName.value = folder.name;
+  folderFormSaveBtn._editingId = folder.id;
+  buildFolderForm(folder);
+  showFolderView('form');
+}
+
+// ---------------------------------------------------------------------------
+// Folders — nav & button handlers
+// ---------------------------------------------------------------------------
+navFolders.onclick = () => {
+  showTab('folders');
+  loadFolders(() => {
+    renderFolderList();
+    showFolderView('list');
+  });
+};
+
+folderNewBtn.onclick = () => openFolderCreateForm();
+
+folderBackBtn.onclick = () => {
+  activeFolderId = null;
+  showFolderView('list');
+};
+
+folderFormBackBtn.onclick = () => {
+  if (activeFolderId) {
+    showFolderView('detail');
+  } else {
+    showFolderView('list');
+  }
+};
+
+folderEditBtn.onclick = () => {
+  const folder = foldersList_data.find(f => f.id === activeFolderId);
+  if (folder) openFolderEditForm(folder);
+};
+
+folderDeleteBtn.onclick = () => {
+  if (!activeFolderId) return;
+  if (!folderDeleteBtn._confirmPending) {
+    folderDeleteBtn._confirmPending = true;
+    const orig = folderDeleteBtn.innerHTML;
+    folderDeleteBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>`;
+    folderDeleteBtn.style.borderColor = 'rgba(239,68,68,0.5)';
+    folderDeleteBtn.style.color = 'var(--danger)';
+    setTimeout(() => {
+      if (folderDeleteBtn._confirmPending) {
+        folderDeleteBtn._confirmPending = false;
+        folderDeleteBtn.innerHTML = orig;
+        folderDeleteBtn.style.borderColor = '';
+        folderDeleteBtn.style.color = '';
+      }
+    }, 3000);
+    return;
+  }
+  folderDeleteBtn._confirmPending = false;
+  folderDeleteBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>`;
+  folderDeleteBtn.style.borderColor = '';
+  folderDeleteBtn.style.color = '';
+
+  const folderId = activeFolderId;
+  foldersList_data = foldersList_data.filter(f => f.id !== folderId);
+
+  // Unassign recordings that were in this folder
+  chrome.storage.local.get(['recordings'], result => {
+    const recs = (result.recordings || []).map(r =>
+      r.folderId === folderId ? { ...r, folderId: null } : r
+    );
+    chrome.storage.local.set({ recordings: recs });
+  });
+
+  saveFolders(foldersList_data, () => {
+    activeFolderId = null;
+    renderFolderList();
+    showFolderView('list');
+  });
+};
+
+folderFormSaveBtn.onclick = () => {
+  const name = folderFormName.value.trim();
+  if (!name) { folderFormName.focus(); return; }
+
+  const color = folderFormSaveBtn._selectedColor || FOLDER_COLORS[0];
+  const icon  = folderFormSaveBtn._selectedIcon  || FOLDER_ICONS[0].id;
+  const editId = folderFormSaveBtn._editingId;
+
+  if (editId) {
+    // Edit existing
+    foldersList_data = foldersList_data.map(f =>
+      f.id === editId ? { ...f, name, color, icon } : f
+    );
+  } else {
+    // New folder
+    const newFolder = { id: `folder_${Date.now()}`, name, color, icon };
+    foldersList_data.push(newFolder);
+  }
+
+  saveFolders(foldersList_data, () => {
+    renderFolderList();
+    if (editId) {
+      // Return to detail of the edited folder
+      const updated = foldersList_data.find(f => f.id === editId);
+      if (updated) { openFolderDetail(updated); return; }
+    }
+    activeFolderId = null;
+    showFolderView('list');
+  });
+};
 
 // ---------------------------------------------------------------------------
 // Sign in / Sign out
