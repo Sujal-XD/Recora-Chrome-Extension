@@ -70,8 +70,10 @@ const calNewEventBtn    = document.getElementById('calNewEventBtn');
 const calBackFromDetail  = document.getElementById('calBackFromDetail');
 const calDeleteEventBtn  = document.getElementById('calDeleteEventBtn');
 const calBackFromCreate = document.getElementById('calBackFromCreate');
-const calRecordEventBtn = document.getElementById('calRecordEventBtn');
-const calCreateForm     = document.getElementById('calCreateForm');
+const calRecordEventBtn  = document.getElementById('calRecordEventBtn');
+const calRescheduleBtn   = document.getElementById('calRescheduleBtn');
+const calFormHeading     = document.getElementById('calFormHeading');
+const calCreateForm      = document.getElementById('calCreateForm');
 const calEvtTitle       = document.getElementById('calEvtTitle');
 const calEvtDate        = document.getElementById('calEvtDate');
 const calEvtStart       = document.getElementById('calEvtStart');
@@ -96,6 +98,7 @@ let timerStart    = null; // Date.now() when we last started counting locally
 let calEvents       = [];
 let activeCalEvent  = null;
 let activeTab       = 'record'; // 'record' | 'calendar'
+let calFormMode     = 'create'; // 'create' | 'reschedule'
 
 // ---------------------------------------------------------------------------
 // Timer helpers (display only — source of truth is background.js)
@@ -674,6 +677,30 @@ async function postCalendarEvent({ title, startIso, endIso, allDay, location, de
   return res.json();
 }
 
+async function patchCalendarEvent(eventId, calendarId, { title, startIso, endIso, allDay, location, description }) {
+  const body = { summary: title };
+  if (allDay) {
+    body.start = { date: startIso };
+    body.end   = { date: endIso };
+  } else {
+    body.start = { dateTime: startIso };
+    body.end   = { dateTime: endIso };
+  }
+  if (location    !== undefined) body.location    = location;
+  if (description !== undefined) body.description = description;
+
+  const res = await calendarFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    true
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail?.error?.message || `Reschedule failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 // ---------------------------------------------------------------------------
 // Calendar — views
 // ---------------------------------------------------------------------------
@@ -706,29 +733,29 @@ function renderCalEvents(events, recordingsMap = {}) {
   const todayDay = new Date(now); todayDay.setHours(0, 0, 0, 0);
   const tomorrow = new Date(todayDay); tomorrow.setDate(todayDay.getDate() + 1);
 
-  // Split: completed = today's timed events whose end time has passed
-  const upcoming  = []; // { ev, idx }
-  const completed = []; // { ev, idx }
+  // Split: completed = today's timed events that ended OR were recorded
+  const upcoming  = []; // { ev, idx, isRecorded }
+  const completed = []; // { ev, idx, isRecorded }
   events.forEach((ev, idx) => {
+    const isRecorded = Object.values(recordingsMap).some(v => v.event?.id === ev.id);
     if (ev.end?.dateTime) {
       const endDt    = new Date(ev.end.dateTime);
       const startDay = new Date(ev.start.dateTime); startDay.setHours(0, 0, 0, 0);
-      if (startDay.getTime() === todayDay.getTime() && endDt < now) {
-        completed.push({ ev, idx });
+      if (startDay.getTime() === todayDay.getTime() && (endDt < now || isRecorded)) {
+        completed.push({ ev, idx, isRecorded });
         return;
       }
     }
-    upcoming.push({ ev, idx });
+    upcoming.push({ ev, idx, isRecorded });
   });
 
   // Build HTML helper for a single event row
-  function evRowHtml(ev, idx, isDone) {
+  function evRowHtml(ev, idx, isDone, isRecorded) {
     const color    = eventColor(ev);
     const locHtml  = ev.location
       ? `<div class="ev-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${escapeHtml(ev.location)}</div>` : '';
-    const meetBadge   = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
-    const isRecorded  = isDone && Object.values(recordingsMap).some(v => v.event?.id === ev.id);
-    const recBadge    = isRecorded
+    const meetBadge = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
+    const recBadge  = isRecorded
       ? `<span class="ev-recorded-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Recorded</span>`
       : '';
     const rowClass   = isDone ? 'ev-row ev-row--completed' : 'ev-row';
@@ -764,7 +791,7 @@ function renderCalEvents(events, recordingsMap = {}) {
         html += `<div class="cal-day-header">${badge}<span class="cal-day-name">${escapeHtml(dayName)}</span><span class="cal-day-date">${escapeHtml(dateStr)}</span></div>`;
         lastDateKey = dateKey;
       }
-      html += evRowHtml(ev, idx, false);
+      html += evRowHtml(ev, idx, false, isRecorded);
     });
   } else if (!completed.length) {
     html += `<div class="cal-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;display:block;margin:0 auto 0.5rem"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>No upcoming events</div>`;
@@ -778,7 +805,7 @@ function renderCalEvents(events, recordingsMap = {}) {
         <span class="cal-completed-badge">Done</span>
         <span class="cal-completed-label">Completed Today</span>
       </div>`;
-    completed.forEach(({ ev, idx }) => { html += evRowHtml(ev, idx, true); });
+    completed.forEach(({ ev, idx, isRecorded }) => { html += evRowHtml(ev, idx, true, isRecorded); });
   }
 
   calEventsList.innerHTML = html;
@@ -861,7 +888,40 @@ calDeleteEventBtn.onclick = async () => {
   }
 };
 
-calBackFromCreate.onclick = () => showCalView('events');
+calBackFromCreate.onclick = () => {
+  if (calFormMode === 'reschedule') {
+    showCalView('detail');
+  } else {
+    showCalView('events');
+  }
+};
+
+calRescheduleBtn.onclick = () => {
+  if (!activeCalEvent) return;
+  calFormMode = 'reschedule';
+  calFormHeading.textContent = 'Reschedule';
+  calEvtTitle.value    = activeCalEvent.summary || '';
+  calEvtLocation.value = activeCalEvent.location || '';
+  calEvtDesc.value     = activeCalEvent.description || '';
+
+  const isAllDay = !!activeCalEvent.start.date;
+  calEvtAllDay.checked = isAllDay;
+  calTimeRow.style.display = isAllDay ? 'none' : 'flex';
+  calEvtStart.required = !isAllDay;
+  calEvtEnd.required   = !isAllDay;
+
+  const pad2 = n => String(n).padStart(2, '0');
+  if (isAllDay) {
+    calEvtDate.value = activeCalEvent.start.date;
+  } else {
+    const s = new Date(activeCalEvent.start.dateTime);
+    const e = new Date(activeCalEvent.end.dateTime);
+    calEvtDate.value  = `${s.getFullYear()}-${pad2(s.getMonth()+1)}-${pad2(s.getDate())}`;
+    calEvtStart.value = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+    calEvtEnd.value   = `${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
+  }
+  showCalView('create');
+};
 
 calEvtAllDay.onchange = () => {
   calTimeRow.style.display = calEvtAllDay.checked ? 'none' : 'flex';
@@ -870,6 +930,8 @@ calEvtAllDay.onchange = () => {
 };
 
 calNewEventBtn.onclick = () => {
+  calFormMode = 'create';
+  calFormHeading.textContent = 'New Event';
   calEvtTitle.value    = '';
   calEvtLocation.value = '';
   calEvtDesc.value     = '';
@@ -910,19 +972,44 @@ calCreateForm.onsubmit = async (e) => {
   if (!title || !date) return;
   if (!allDay && (!calEvtStart.value || !calEvtEnd.value)) return;
 
+  // All-day end = start + 1 day using local date arithmetic (avoids UTC offset bugs)
+  const [dy, dm, dd] = date.split('-').map(Number);
+  const nextDay   = new Date(dy, dm - 1, dd + 1);
+  const pad2b     = n => String(n).padStart(2, '0');
+  const allDayEnd = `${nextDay.getFullYear()}-${pad2b(nextDay.getMonth() + 1)}-${pad2b(nextDay.getDate())}`;
+  const startIso  = allDay ? date : toLocalISOString(date, calEvtStart.value);
+  const endIso    = allDay ? allDayEnd : toLocalISOString(date, calEvtEnd.value);
+
   calCreateSubmit.disabled    = true;
   calCreateSubmit.textContent = 'Saving…';
+
+  if (calFormMode === 'reschedule') {
+    // PATCH existing event
+    try {
+      await patchCalendarEvent(
+        activeCalEvent.id,
+        activeCalEvent._calendarId || 'primary',
+        { title, startIso, endIso, allDay, location, description: desc }
+      );
+    } catch (err) {
+      const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
+      errEl.className   = 'cal-form-error';
+      errEl.textContent = err.message;
+      calCreateSubmit.parentElement.insertBefore(errEl, calCreateSubmit);
+      calCreateSubmit.disabled    = false;
+      calCreateSubmit.textContent = 'Save';
+      return;
+    }
+    calCreateSubmit.disabled    = false;
+    calCreateSubmit.textContent = 'Save';
+    calFormMode = 'create';
+    calFormHeading.textContent = 'New Event';
+    await loadCalendar();
+    return;
+  }
+
+  // CREATE mode — optimistic insert
   try {
-    // All-day end = start + 1 day using local date arithmetic (avoids UTC offset bugs)
-    const [dy, dm, dd] = date.split('-').map(Number);
-    const nextDay   = new Date(dy, dm - 1, dd + 1);
-    const pad2b     = n => String(n).padStart(2, '0');
-    const allDayEnd = `${nextDay.getFullYear()}-${pad2b(nextDay.getMonth() + 1)}-${pad2b(nextDay.getDate())}`;
-
-    const startIso = allDay ? date : toLocalISOString(date, calEvtStart.value);
-    const endIso   = allDay ? allDayEnd : toLocalISOString(date, calEvtEnd.value);
-
-    // Optimistic insert so event appears immediately without waiting for API round-trip
     const optimisticEv = {
       id:      `optimistic_${Date.now()}`,
       summary: title,
@@ -941,8 +1028,7 @@ calCreateForm.onsubmit = async (e) => {
 
     await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso });
   } catch (err) {
-    // Remove optimistic entry on failure
-    calEvents = calEvents.filter(e => !e.id?.startsWith('optimistic_'));
+    calEvents = calEvents.filter(ev => !ev.id?.startsWith('optimistic_'));
     const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
     errEl.className    = 'cal-form-error';
     errEl.textContent  = err.message;

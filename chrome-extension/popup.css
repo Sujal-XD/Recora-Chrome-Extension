@@ -807,7 +807,35 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
   max-height: 100px;
   overflow-y: auto;
 }
+.cal-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
 .cal-record-btn { flex-shrink: 0; }
+
+.cal-reschedule-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.cal-reschedule-btn:hover {
+  border-color: var(--primary);
+  color: var(--text-light);
+  background: rgba(124,58,237,0.12);
+}
 
 /* Create Event Form */
 .cal-form-wrap {

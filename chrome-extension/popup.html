@@ -132,10 +132,16 @@
             </button>
           </div>
           <div id="calDetailContent" class="cal-detail-content"></div>
-          <button id="calRecordEventBtn" class="btn-primary hover-lift cal-record-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-            Record this Meeting
-          </button>
+          <div class="cal-detail-actions">
+            <button id="calRecordEventBtn" class="btn-primary hover-lift cal-record-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+              Record this Meeting
+            </button>
+            <button id="calRescheduleBtn" class="cal-reschedule-btn hover-lift">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              Reschedule
+            </button>
+          </div>
         </div>
 
         <!-- Create Event View -->
@@ -145,7 +151,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
               Back
             </button>
-            <span class="cal-heading">New Event</span>
+            <span id="calFormHeading" class="cal-heading">New Event</span>
           </div>
           <div class="cal-form-wrap">
             <form id="calCreateForm" class="cal-form">
