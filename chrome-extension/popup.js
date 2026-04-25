@@ -1563,60 +1563,34 @@ function renderHistDetailContent(rec) {
         <div class="hist-tab-pane${tab==='summary'?' active':''}" data-dpane="summary">${summaryHtml}</div>
         <div class="hist-tab-pane${tab==='mom'?' active':''}" data-dpane="mom">${momHtml}</div>
       </div>
-      <div class="hist-download-section">
-        <div class="hist-download-label">Download Text</div>
-        <div class="hist-download-row">
-          <button class="hist-download-btn" data-dl="transcript" ${!hasT ? 'disabled' : ''}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
-            Transcript
+      <div class="hist-action-bar">
+        <button class="hist-export-btn" id="histExportBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export
+          <svg class="hist-export-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="hist-audio-btns">
+          <button class="hist-audio-btn" data-dl="webm" ${!rec.audio_url ? 'disabled' : ''}>WebM</button>
+          <button class="hist-audio-btn wav-btn" data-dl="wav" ${!rec.audio_url && !rec.wav_url ? 'disabled' : ''}>WAV</button>
+        </div>
+      </div>
+      <div class="hist-export-sheet" id="histExportSheet" style="display:none">
+        <div class="hist-export-sheet-label" id="histExportSheetLabel">Transcript</div>
+        <div class="hist-export-sheet-row">
+          <button class="hist-export-opt" data-xfmt="txt">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg>
+            Download Text
           </button>
-          <button class="hist-download-btn" data-dl="summary" ${!hasS ? 'disabled' : ''}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            Summary
+          <button class="hist-export-opt" data-xfmt="pdf" ${s !== 'done' ? 'disabled' : ''}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Download PDF
           </button>
-          <button class="hist-download-btn" data-dl="mom">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="12" y2="17"></line></svg>
-            MOM
-          </button>
-          <button class="hist-download-btn" data-dl="webm" ${!rec.audio_url ? 'disabled' : ''}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            WebM
-          </button>
-          <button class="hist-download-btn wav-btn" data-dl="wav" ${!rec.audio_url && !rec.wav_url ? 'disabled' : ''}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            WAV
+          <button class="hist-export-opt hist-export-email-opt" data-xfmt="email" ${s !== 'done' ? 'disabled' : ''}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            Email PDF
           </button>
         </div>
       </div>
-      ${s === 'done' ? `
-      <div class="hist-pdf-section">
-        <div class="hist-pdf-header">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-          PDF Export
-        </div>
-        <div class="hist-pdf-row">
-          <span class="hist-pdf-row-label">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Download
-          </span>
-          <div class="hist-pdf-btns">
-            <button class="hist-pdf-btn" data-pdf="transcript" ${!hasT ? 'disabled' : ''}>Transcript</button>
-            <button class="hist-pdf-btn" data-pdf="summary"    ${!hasS ? 'disabled' : ''}>Summary</button>
-            <button class="hist-pdf-btn" data-pdf="mom">MOM</button>
-          </div>
-        </div>
-        <div class="hist-pdf-row">
-          <span class="hist-pdf-row-label">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-            Email
-          </span>
-          <div class="hist-pdf-btns">
-            <button class="hist-pdf-btn hist-email-btn" data-email="transcript" ${!hasT ? 'disabled' : ''}>Transcript</button>
-            <button class="hist-pdf-btn hist-email-btn" data-email="summary"    ${!hasS ? 'disabled' : ''}>Summary</button>
-            <button class="hist-pdf-btn hist-email-btn" data-email="mom">MOM</button>
-          </div>
-        </div>
-      </div>` : ''}
       <div class="hist-folder-assign">
         <label class="hist-folder-assign-label">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -1642,28 +1616,62 @@ function renderHistDetailContent(rec) {
       });
     });
 
-    // Download buttons
+    // Audio download buttons (WebM / WAV)
     const safe = (rec.title || 'recording').replace(/[^a-z0-9_\-]/gi, '_');
     histDetailContent.querySelectorAll('[data-dl]').forEach(btn => {
       btn.addEventListener('click', () => {
-        switch (btn.dataset.dl) {
-          case 'transcript': downloadTextFile(`${safe}_transcript.txt`, buildTranscriptText(rec)); break;
-          case 'summary':    downloadTextFile(`${safe}_summary.txt`,    buildSummaryText(rec));    break;
-          case 'mom':        downloadTextFile(`${safe}_mom.txt`,        generateMOMWithEvent(rec, calEvent)); break;
-          case 'webm':       downloadWebm(rec); break;
-          case 'wav':        downloadWav(btn, rec); break;
-        }
+        if (btn.dataset.dl === 'webm') downloadWebm(rec);
+        else if (btn.dataset.dl === 'wav') downloadWav(btn, rec);
       });
     });
 
-    // PDF download buttons
-    histDetailContent.querySelectorAll('[data-pdf]').forEach(btn => {
-      btn.addEventListener('click', () => downloadDocPdf(btn, btn.dataset.pdf, rec, calEvent));
+    // Export button — toggle format sheet, label = current tab
+    const exportBtn   = document.getElementById('histExportBtn');
+    const exportSheet = document.getElementById('histExportSheet');
+    const exportLabel = document.getElementById('histExportSheetLabel');
+    const typeLabel   = { transcript: 'Transcript', summary: 'Summary', mom: 'MOM' };
+
+    const refreshSheetState = () => {
+      const t = histDetailTab;
+      exportLabel.textContent = typeLabel[t] || t;
+      const txtBtn = exportSheet.querySelector('[data-xfmt="txt"]');
+      if (txtBtn) txtBtn.disabled = (t === 'transcript' && !hasT) || (t === 'summary' && !hasS);
+    };
+
+    exportBtn.addEventListener('click', () => {
+      const open = exportSheet.style.display !== 'none';
+      exportSheet.style.display = open ? 'none' : 'flex';
+      exportBtn.classList.toggle('hist-export-btn--open', !open);
+      if (!open) refreshSheetState();
     });
 
-    // Email send buttons
-    histDetailContent.querySelectorAll('[data-email]').forEach(btn => {
-      btn.addEventListener('click', () => sendDocEmail(btn, btn.dataset.email, rec, calEvent));
+    // Close sheet when switching tabs
+    histDetailContent.querySelectorAll('[data-dtab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        exportSheet.style.display = 'none';
+        exportBtn.classList.remove('hist-export-btn--open');
+      });
+    });
+
+    // Export format options
+    exportSheet.querySelectorAll('[data-xfmt]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const fmt = btn.dataset.xfmt;
+        const tab = histDetailTab;
+        exportSheet.style.display = 'none';
+        exportBtn.classList.remove('hist-export-btn--open');
+        if (fmt === 'txt') {
+          switch (tab) {
+            case 'transcript': downloadTextFile(`${safe}_transcript.txt`, buildTranscriptText(rec)); break;
+            case 'summary':    downloadTextFile(`${safe}_summary.txt`,    buildSummaryText(rec));    break;
+            case 'mom':        downloadTextFile(`${safe}_mom.txt`,        generateMOMWithEvent(rec, calEvent)); break;
+          }
+        } else if (fmt === 'pdf') {
+          await downloadDocPdf(btn, tab, rec, calEvent);
+        } else if (fmt === 'email') {
+          await sendDocEmail(btn, tab, rec, calEvent);
+        }
+      });
     });
 
     // Delete with confirm
