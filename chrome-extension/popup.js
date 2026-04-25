@@ -107,6 +107,7 @@ let calFormMode      = 'create'; // 'create' | 'reschedule'
 let calRecordingsMap = {};        // calEventRecordings from storage, kept in sync
 let calFormGuests    = [];        // array of email strings for current form
 let calFormAddMeet   = false;     // whether to create Google Meet link
+let _lastRecordingElapsedMs = 0;  // captured at upload-start to estimate transcription time
 
 // ---------------------------------------------------------------------------
 // Timer helpers (display only — source of truth is background.js)
@@ -318,6 +319,9 @@ chrome.runtime.onMessage.addListener((message) => {
       startLocalTimer(message.elapsedMs || 0);
       break;
     case 'uploading':
+      _lastRecordingElapsedMs = timerStart !== null
+        ? elapsedBase + (Date.now() - timerStart)
+        : elapsedBase;
       setRecordingUI(false);
       statusDiv.textContent = 'Processing & uploading...';
       break;
@@ -331,9 +335,12 @@ chrome.runtime.onMessage.addListener((message) => {
       setRecordingUI(false);
       statusDiv.textContent = `Recording failed: ${message.error || 'Unknown error'}`;
       break;
-    case 'transcribing':
-      statusDiv.textContent = 'Transcribing...';
+    case 'transcribing': {
+      const totalMins = _lastRecordingElapsedMs / 60000;
+      const estMins   = Math.max(1, Math.ceil(totalMins * 0.25));
+      statusDiv.textContent = `Transcription ready in ~${estMins} min — come back to download or email.`;
       break;
+    }
     case 'transcription_done':
       statusDiv.textContent = 'Ready';
       // Save calendar-event → recording link if session was triggered from calendar
@@ -816,7 +823,12 @@ function renderCalEvents(events, recordingsMap = {}) {
     html += `<div class="cal-section-header"><span class="cal-section-label">Upcoming</span></div>`;
     let lastDateKey = '';
     upcoming.forEach(({ ev, idx, isRecorded }) => {
-      const dateKey = (ev.start.date || ev.start.dateTime || '').slice(0, 10);
+      const dateKey = ev.start.date
+        ? ev.start.date
+        : (() => {
+            const d = new Date(ev.start.dateTime);
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          })();
       if (dateKey !== lastDateKey) {
         const d   = new Date(dateKey + 'T00:00:00');
         const cmp = new Date(d); cmp.setHours(0, 0, 0, 0);
@@ -1107,11 +1119,17 @@ calNewEventBtn.onclick = () => {
   // Default: today (local date), next 30-min boundary, 30-min duration
   const now  = new Date();
   const pad2 = n => String(n).padStart(2, '0');
-  calEvtDate.value = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-  let startH = now.getHours(), startM = now.getMinutes() < 30 ? 30 : 0;
-  if (now.getMinutes() >= 30) startH = (startH + 1) % 24;
+  let startH = now.getHours();
+  let startM = now.getMinutes() < 30 ? 30 : 0;
+  let dateOffset = 0;
+  if (now.getMinutes() >= 30) startH += 1;
+  if (startH >= 24) { startH -= 24; dateOffset = 1; }
   let endH = startH, endM = startM + 30;
-  if (endM >= 60) { endH = (endH + 1) % 24; endM -= 60; }
+  if (endM >= 60) { endH += 1; endM -= 60; }
+  if (endH >= 24) endH -= 24;
+  const eventDate = new Date(now);
+  eventDate.setDate(eventDate.getDate() + dateOffset);
+  calEvtDate.value = `${eventDate.getFullYear()}-${pad2(eventDate.getMonth() + 1)}-${pad2(eventDate.getDate())}`;
   const hhmm = (h, m) => `${pad2(h)}:${pad2(m)}`;
   calEvtStart.value = hhmm(startH, startM);
   calEvtEnd.value   = hhmm(endH, endM);
@@ -1142,7 +1160,12 @@ calCreateForm.onsubmit = async (e) => {
   const pad2b     = n => String(n).padStart(2, '0');
   const allDayEnd = `${nextDay.getFullYear()}-${pad2b(nextDay.getMonth() + 1)}-${pad2b(nextDay.getDate())}`;
   const startIso  = allDay ? date : toLocalISOString(date, calEvtStart.value);
-  const endIso    = allDay ? allDayEnd : toLocalISOString(date, calEvtEnd.value);
+  // If end time <= start time the meeting crosses midnight — advance end date by 1 day
+  let endDate = date;
+  if (!allDay && calEvtEnd.value && calEvtStart.value && calEvtEnd.value <= calEvtStart.value) {
+    endDate = allDayEnd; // allDayEnd is already date + 1 day
+  }
+  const endIso = allDay ? allDayEnd : toLocalISOString(endDate, calEvtEnd.value);
 
   calCreateSubmit.disabled    = true;
   calCreateSubmit.textContent = 'Saving…';
@@ -1151,10 +1174,12 @@ calCreateForm.onsubmit = async (e) => {
   const addMeet   = calFormAddMeet;
 
   if (calFormMode === 'reschedule') {
+    const reschedCalId = activeCalEvent._calendarId || 'primary';
+    let updatedEvent;
     try {
-      await patchCalendarEvent(
+      updatedEvent = await patchCalendarEvent(
         activeCalEvent.id,
-        activeCalEvent._calendarId || 'primary',
+        reschedCalId,
         { title, startIso, endIso, allDay, location, description: desc, attendees, addMeet }
       );
     } catch (err) {
@@ -1166,34 +1191,45 @@ calCreateForm.onsubmit = async (e) => {
       calCreateSubmit.textContent = 'Save';
       return;
     }
+    // Update in-place so the event appears immediately without waiting for API propagation
+    calEvents = calEvents.map(ev =>
+      ev.id === activeCalEvent.id
+        ? { ...updatedEvent, _calendarId: reschedCalId, _calendarColor: activeCalEvent._calendarColor || null, _canDelete: true }
+        : ev
+    );
+    renderCalEvents(calEvents, calRecordingsMap);
+    showCalView('events');
     calCreateSubmit.disabled    = false;
     calCreateSubmit.textContent = 'Save';
     calFormMode = 'create';
-    calFormHeading.textContent = 'New Event';
-    await loadCalendar();
+    calFormHeading.textContent  = 'New Event';
+    // Background reload after 3 s to pick up any server-side changes
+    setTimeout(() => loadCalendar(), 3000);
     return;
   }
 
   // CREATE mode — optimistic insert
-  try {
-    const optimisticEv = {
-      id:      `optimistic_${Date.now()}`,
-      summary: title,
-      start:   allDay ? { date } : { dateTime: startIso },
-      end:     allDay ? { date: allDayEnd } : { dateTime: endIso },
-      location: location || undefined,
-      description: desc || undefined,
-      attendees: attendees.length ? attendees.map(e => ({ email: e })) : undefined,
-      _calendarColor: 'var(--primary)',
-      _canDelete: true,
-    };
-    calEvents = [optimisticEv, ...calEvents];
-    renderCalEvents(calEvents, calRecordingsMap);
-    showCalView('events');
+  const optimisticEv = {
+    id:      `optimistic_${Date.now()}`,
+    summary: title,
+    start:   allDay ? { date } : { dateTime: startIso },
+    end:     allDay ? { date: allDayEnd } : { dateTime: endIso },
+    location: location || undefined,
+    description: desc || undefined,
+    attendees: attendees.length ? attendees.map(e => ({ email: e })) : undefined,
+    _calendarColor: 'var(--primary)',
+    _canDelete: true,
+  };
+  calEvents = [optimisticEv, ...calEvents];
+  renderCalEvents(calEvents, calRecordingsMap);
+  showCalView('events');
 
-    await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso, attendees, addMeet });
+  let realEvent;
+  try {
+    realEvent = await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso, attendees, addMeet });
   } catch (err) {
     calEvents = calEvents.filter(ev => !ev.id?.startsWith('optimistic_'));
+    renderCalEvents(calEvents, calRecordingsMap);
     const errEl = calCreateView.querySelector('.cal-form-error') || document.createElement('p');
     errEl.className    = 'cal-form-error';
     errEl.textContent  = err.message;
@@ -1203,9 +1239,18 @@ calCreateForm.onsubmit = async (e) => {
     showCalView('create');
     return;
   }
+
+  // Replace optimistic event with real event so it stays visible immediately
+  calEvents = calEvents.map(ev =>
+    ev.id?.startsWith('optimistic_')
+      ? { ...realEvent, _calendarId: 'primary', _calendarColor: 'var(--primary)', _canDelete: true }
+      : ev
+  );
+  renderCalEvents(calEvents, calRecordingsMap);
   calCreateSubmit.disabled    = false;
   calCreateSubmit.textContent = 'Save';
-  await loadCalendar();
+  // Background reload after 3 s for eventual consistency
+  setTimeout(() => loadCalendar(), 3000);
 };
 
 // ---------------------------------------------------------------------------
@@ -2281,6 +2326,7 @@ signInBtn.onclick = () => {
           const finish = () => {
             chrome.storage.local.set({ cachedUser: userInfo, lastUserId: userInfo.sub });
             currentUser = userInfo;
+            statusDiv.textContent = 'Ready';
             updateUI(currentUser);
           };
           if (stored.lastUserId && stored.lastUserId !== userInfo.sub) {
