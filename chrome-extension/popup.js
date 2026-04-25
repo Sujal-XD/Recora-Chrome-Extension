@@ -241,6 +241,10 @@ function renderProfileBtn(user) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
         Help &amp; Support
       </button>
+      <button class="profile-dropdown-help-btn" id="profileSwitchBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        Switch Account
+      </button>
       <button class="profile-signout-btn" id="profileSignOutBtn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         Sign out
@@ -255,6 +259,11 @@ function renderProfileBtn(user) {
   document.getElementById('profileHelpBtn').onclick = () => {
     document.getElementById('profileDropdown').classList.remove('open');
     showTab('support');
+  };
+
+  document.getElementById('profileSwitchBtn').onclick = () => {
+    document.getElementById('profileDropdown').classList.remove('open');
+    handleSwitchAccount();
   };
 
   document.getElementById('profileSignOutBtn').onclick = () => {
@@ -2333,40 +2342,75 @@ folderFormSaveBtn.onclick = () => {
 // ---------------------------------------------------------------------------
 // Sign in / Sign out
 // ---------------------------------------------------------------------------
+function handleAuthToken(token) {
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(r => r.json())
+    .then(userInfo => {
+      chrome.storage.local.get(['lastUserId'], stored => {
+        const finish = () => {
+          chrome.storage.local.set({ cachedUser: userInfo, lastUserId: userInfo.sub });
+          currentUser = userInfo;
+          updateUI(currentUser);
+        };
+        if (stored.lastUserId && stored.lastUserId !== userInfo.sub) {
+          chrome.storage.local.remove(['recordings'], finish);
+        } else {
+          finish();
+        }
+      });
+    })
+    .catch(() => { statusDiv.textContent = 'Failed to fetch user info.'; });
+}
+
 signInBtn.onclick = () => {
   statusDiv.textContent = 'Signing in...';
-  // Call getAuthToken directly — no clearAllCachedAuthTokens here so:
-  //   • The Google account picker opens instantly (no extra async round-trip)
-  //   • Chrome reuses the existing OAuth grant; users are NOT re-prompted for
-  //     calendar/profile scopes on every login (they granted them once already)
-  chrome.identity.getAuthToken({ interactive: true }, (token) => {
-    if (chrome.runtime.lastError || !token) {
-      statusDiv.textContent = `Sign-in failed: ${chrome.runtime.lastError?.message || 'Unknown error'}`;
+  // Try silent (instant if token cached), fall back to interactive
+  chrome.identity.getAuthToken({ interactive: false }, (token) => {
+    if (!chrome.runtime.lastError && token) {
+      handleAuthToken(token);
       return;
     }
-    fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(userInfo => {
-        chrome.storage.local.get(['lastUserId'], stored => {
-          const finish = () => {
-            chrome.storage.local.set({ cachedUser: userInfo, lastUserId: userInfo.sub });
-            currentUser = userInfo;
-            updateUI(currentUser);
-          };
-          if (stored.lastUserId && stored.lastUserId !== userInfo.sub) {
-            // Different account — clear local recordings so the new user
-            // starts with a clean slate (their own recordings load from Azure)
-            chrome.storage.local.remove(['recordings'], finish);
-          } else {
-            finish();
-          }
-        });
-      })
-      .catch(() => { statusDiv.textContent = 'Failed to fetch user info.'; });
+    chrome.identity.getAuthToken({ interactive: true }, (token2) => {
+      if (chrome.runtime.lastError || !token2) {
+        statusDiv.textContent = `Sign-in failed: ${chrome.runtime.lastError?.message || 'Unknown error'}`;
+        return;
+      }
+      handleAuthToken(token2);
+    });
   });
 };
+
+function handleSwitchAccount() {
+  chrome.identity.getAuthToken({ interactive: false }, (token) => {
+    void chrome.runtime.lastError;
+    const doSwitch = () => {
+      currentUser = null;
+      hasConsent  = false;
+      chrome.storage.local.set({ lastActiveTab: 'record', cachedUser: null, lastUserId: null });
+      updateUI(null);
+      stopLocalTimer();
+      // Small delay so UI resets before interactive prompt opens
+      setTimeout(() => {
+        statusDiv.textContent = 'Signing in...';
+        chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
+          if (chrome.runtime.lastError || !newToken) {
+            statusDiv.textContent = `Sign-in failed: ${chrome.runtime.lastError?.message || 'Unknown error'}`;
+            return;
+          }
+          handleAuthToken(newToken);
+        });
+      }, 150);
+    };
+    if (token) {
+      fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`).catch(() => {});
+      chrome.identity.removeCachedAuthToken({ token }, doSwitch);
+    } else {
+      doSwitch();
+    }
+  });
+}
 
 function handleLogout() {
   chrome.identity.getAuthToken({ interactive: false }, (token) => {
