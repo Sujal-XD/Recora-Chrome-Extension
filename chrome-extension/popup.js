@@ -873,8 +873,9 @@ function showEventDetail(event) {
        </div>` : '';
   const descHtml  = event.description
     ? `<div class="cal-detail-desc">${escapeHtml(event.description)}</div>` : '';
-  const meetHtml  = event.hangoutLink
-    ? `<a class="btn-primary hover-lift" href="${escapeHtml(event.hangoutLink)}" target="_blank" style="margin-top:0.6rem;display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.82rem;padding:0.55rem 1rem;text-decoration:none">
+  const safeMeetLink = (event.hangoutLink || '').startsWith('https://') ? event.hangoutLink : '';
+  const meetHtml  = safeMeetLink
+    ? `<a class="btn-primary hover-lift" href="${escapeHtml(safeMeetLink)}" target="_blank" rel="noopener noreferrer" style="margin-top:0.6rem;display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.82rem;padding:0.55rem 1rem;text-decoration:none">
          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.82v6.36a1 1 0 0 1-1.447.89L15 14M3 8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"></path></svg>
          Join Google Meet
        </a>` : '';
@@ -1785,7 +1786,9 @@ async function downloadWav(btn, rec) {
   btn.disabled = true;
   btn.textContent = 'Converting…';
   try {
-    const resp = await fetch(rec.audio_url);
+    const sasToken  = await getReadSasToken().catch(() => null);
+    const fetchUrl  = sasToken ? `${rec.audio_url}?${sasToken}` : rec.audio_url;
+    const resp = await fetch(fetchUrl);
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
     const arrayBuf = await resp.arrayBuffer();
     const audioCtx = new AudioContext();
@@ -1805,12 +1808,16 @@ async function downloadWav(btn, rec) {
   }
 }
 
-function downloadWebm(rec) {
-  if (rec.audio_url) {
-    const safe = (rec.title || 'recording').replace(/[^a-z0-9_\-]/gi, '_');
+async function downloadWebm(rec) {
+  if (!rec.audio_url) { alert('No audio URL available.'); return; }
+  const safe = (rec.title || 'recording').replace(/[^a-z0-9_\-]/gi, '_');
+  try {
+    const sasToken  = await getReadSasToken();
+    const signedUrl = `${rec.audio_url}?${sasToken}`;
+    chrome.downloads.download({ url: signedUrl, filename: `${safe}.webm`, saveAs: false });
+  } catch (_) {
+    // Fallback: try without SAS (works if container is public)
     chrome.downloads.download({ url: rec.audio_url, filename: `${safe}.webm`, saveAs: false });
-  } else {
-    alert('No audio URL available.');
   }
 }
 
@@ -1860,10 +1867,31 @@ function deleteHistRecording(recId, cardEl, confirmBtn) {
 const AZURE_BASE = 'https://recorderextension.blob.core.windows.net/meeting-audio';
 const BACKEND    = 'https://recora-chrome-extension.onrender.com';
 
+// Cached SAS read token — valid for 2 days, refreshed every hour
+let _sasTokenCache   = null;
+let _sasTokenExpiry  = 0;
+
+async function getReadSasToken() {
+  if (_sasTokenCache && Date.now() < _sasTokenExpiry) return _sasTokenCache;
+  let authToken;
+  try { authToken = await getAuthToken(false); } catch (_) { authToken = await getAuthToken(true); }
+  const res = await fetch(`${BACKEND}/generate-sas`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+    cache:   'no-store',
+  });
+  if (!res.ok) throw new Error('Failed to get SAS token');
+  const { sasToken } = await res.json();
+  _sasTokenCache  = sasToken;
+  _sasTokenExpiry = Date.now() + 60 * 60 * 1000; // refresh every hour
+  return sasToken;
+}
+
 async function azureLoadRecordings() {
   if (!currentUser?.sub) return [];
   try {
-    const url = `${AZURE_BASE}/${encodeURIComponent(currentUser.sub)}/recordings.json`;
+    const sasToken = await getReadSasToken();
+    const url = `${AZURE_BASE}/${encodeURIComponent(currentUser.sub)}/recordings.json?${sasToken}`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
