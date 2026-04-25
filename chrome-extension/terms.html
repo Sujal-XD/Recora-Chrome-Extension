@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recora — Terms & Conditions</title>
+  <style>
+    :root {
+      --bg: #030712;
+      --surface: rgba(31,41,55,0.5);
+      --border: rgba(255,255,255,0.08);
+      --primary: #8b5cf6;
+      --primary-light: #c4b5fd;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    header .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header .meta {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: right;
+    }
+    .notice-box {
+      background: rgba(124,58,237,0.1);
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-size: 0.88rem;
+      color: var(--primary-light);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .notice-box svg { flex-shrink: 0; margin-top: 2px; }
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--primary-light);
+      margin: 2.5rem 0 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 3px; height: 16px;
+      background: var(--primary);
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 1.2rem 0 0.4rem;
+    }
+    p { color: #d1d5db; margin-bottom: 0.75rem; }
+    ul, ol { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+    li { color: #d1d5db; margin-bottom: 0.35rem; }
+    li strong { color: var(--text); }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .tag-critical { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .tag-important { background: rgba(245,158,11,0.15); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+    .tag-info { background: rgba(16,185,129,0.12); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+    .highlight-box {
+      background: rgba(239,68,68,0.07);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      margin: 0.75rem 0;
+    }
+    .highlight-box p { color: #fca5a5; margin: 0; font-size: 0.88rem; }
+    .highlight-box.amber { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.2); }
+    .highlight-box.amber p { color: #fcd34d; }
+    .highlight-box.green { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.2); }
+    .highlight-box.green p { color: #6ee7b7; }
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    a { color: var(--primary-light); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+        <line x1="12" y1="19" x2="12" y2="22"></line>
+      </svg>
+    </div>
+    <h1>Recora — Terms &amp; Conditions</h1>
+    <div class="meta">
+      Version 1.0<br>
+      Effective: April 2025
+    </div>
+  </header>
+
+  <div class="notice-box">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    <span>Please read these Terms &amp; Conditions carefully before using Recora. By clicking <strong>"I Agree"</strong> in the extension, you confirm that you have read, understood, and agreed to all terms below. If you do not agree, do not use this extension.</span>
+  </div>
+
+
+  <!-- 1 -->
+  <h2>1. About Recora</h2>
+  <p>Recora is a Chrome browser extension that records browser tab audio and microphone input during meetings, automatically transcribes the audio using AI speech-to-text services, generates meeting summaries and minutes, and syncs data securely to your personal cloud storage. Recora is intended for personal and professional productivity use only.</p>
+
+
+  <!-- 2 -->
+  <h2>2. Recording Consent &amp; Legal Compliance <span class="tag tag-critical">Critical</span></h2>
+
+  <div class="highlight-box">
+    <p>⚠️ Recording conversations without the consent of all participants may be <strong>illegal</strong> in your jurisdiction. You are solely responsible for ensuring compliance with all applicable wiretapping, eavesdropping, and recording laws.</p>
+  </div>
+
+  <p>By using Recora, you agree that:</p>
+  <ul>
+    <li>You will obtain explicit consent from <strong>all participants</strong> before recording any meeting or conversation.</li>
+    <li>You will inform all participants that the meeting is being recorded at the start of every session.</li>
+    <li>You will not use Recora to record conversations in which you are not an active, consenting participant.</li>
+    <li>You will not use Recora to record private conversations without the knowledge of the other party, even if legally permitted in your jurisdiction.</li>
+    <li>You bear full legal liability for any recording made without proper consent.</li>
+  </ul>
+
+  <p>Recora, its developers, and affiliated parties accept <strong>no liability</strong> for any illegal recordings made using this extension.</p>
+
+
+  <!-- 3 -->
+  <h2>3. Audio Data &amp; AI Training <span class="tag tag-important">Important</span></h2>
+
+  <h3>3.1 How Your Audio Is Processed</h3>
+  <p>When you stop a recording, Recora:</p>
+  <ol>
+    <li>Stores the raw audio file (WebM format) in your private Azure Blob Storage container, protected by your account credentials.</li>
+    <li>Sends the audio to <strong>Deepgram</strong> (a third-party AI transcription service) for speech-to-text conversion. This transmission is proxied through Recora's secure backend server to protect API keys.</li>
+    <li>Generates a summary, key points, decisions, and action items from the transcript using pattern-matching algorithms running locally within the extension.</li>
+  </ol>
+
+  <h3>3.2 AI Training Disclosure <span class="tag tag-important">Required Reading</span></h3>
+  <div class="highlight-box amber">
+    <p>🔔 <strong>Your audio and transcript data may be used by third-party AI service providers (including Deepgram) to improve and train their AI models</strong>, subject to their own privacy policies and terms of service. Recora does not control how third-party services handle data once it is transmitted to them.</p>
+  </div>
+  <p>By using Recora, you acknowledge and consent to the possibility that:</p>
+  <ul>
+    <li>Audio files transmitted to Deepgram for transcription may be retained by Deepgram and used to train or improve AI speech recognition models.</li>
+    <li>Transcript text generated by AI models may be subject to Deepgram's data retention policies.</li>
+    <li>Recora's backend may log metadata (timestamps, file sizes, user identifiers) for operational and debugging purposes.</li>
+  </ul>
+  <p>We strongly recommend reviewing <a href="https://deepgram.com/privacy" target="_blank" rel="noopener">Deepgram's Privacy Policy</a> and <a href="https://deepgram.com/tos" target="_blank" rel="noopener">Terms of Service</a> before using Recora.</p>
+
+  <h3>3.3 Recora's Use of Your Data</h3>
+  <p>Recora itself does <strong>not</strong> sell, share, or monetize your personal data or recordings. Recora does not currently use your recordings to train any proprietary AI model. This policy may change in future versions with advance notice.</p>
+
+
+  <!-- 4 -->
+  <h2>4. Data Storage &amp; Security <span class="tag tag-info">Info</span></h2>
+
+  <h3>4.1 Where Your Data Is Stored</h3>
+  <ul>
+    <li><strong>Audio files:</strong> Stored in Microsoft Azure Blob Storage, in a container scoped to your Google account ID. Access is controlled via time-limited Shared Access Signature (SAS) tokens generated by Recora's backend.</li>
+    <li><strong>Recording metadata &amp; transcripts:</strong> Stored locally in your browser's <code>chrome.storage.local</code> and synced as a JSON file to your Azure storage container.</li>
+    <li><strong>Calendar data:</strong> Fetched directly from Google Calendar API using your OAuth token. Calendar events are not stored on Recora servers.</li>
+  </ul>
+
+  <h3>4.2 Data Retention</h3>
+  <p>Recora retains your data in Azure as long as your account remains active. You may delete individual recordings at any time from within the extension. Deleting a recording removes the local record; the audio file in Azure must be manually deleted via the Azure Portal if desired.</p>
+
+  <h3>4.3 Security Measures</h3>
+  <ul>
+    <li>All communication between the extension and Recora's backend uses HTTPS (TLS 1.2+).</li>
+    <li>Your Google OAuth access token is verified server-side on every request using Google's token validation endpoint.</li>
+    <li>API keys (Deepgram, Azure) are never exposed to the client — they are stored exclusively on the backend server.</li>
+    <li>Azure storage access is granted via short-lived SAS tokens scoped to your user ID only.</li>
+    <li>Recora's backend enforces CORS restrictions and rate limiting to prevent abuse.</li>
+  </ul>
+
+  <h3>4.4 Security Breach Notification</h3>
+  <p>In the event of a data breach that affects your personal information, Recora will make reasonable efforts to notify affected users within 72 hours of becoming aware of the breach, subject to applicable law.</p>
+
+
+  <!-- 5 -->
+  <h2>5. Google Account &amp; OAuth</h2>
+  <p>Recora requests the following Google OAuth scopes:</p>
+  <ul>
+    <li><strong>openid, profile, email</strong> — to identify you and personalise the experience.</li>
+    <li><strong>calendar.readonly</strong> — to display your upcoming calendar events.</li>
+    <li><strong>calendar.events</strong> — to create, reschedule, and manage events on your behalf.</li>
+  </ul>
+  <p>Recora does not store your Google account password or OAuth refresh tokens. Access tokens are managed by Chrome's identity API and are not persisted on Recora's servers.</p>
+
+
+  <!-- 6 -->
+  <h2>6. Prohibited Uses <span class="tag tag-critical">Zero Tolerance</span></h2>
+  <p>You must not use Recora to:</p>
+  <ul>
+    <li><strong>Record without consent</strong> — secretly recording others is illegal in most jurisdictions and is strictly prohibited.</li>
+    <li><strong>Conduct surveillance</strong> — monitoring employees, family members, or any person without their knowledge.</li>
+    <li><strong>Harvest competitor intelligence</strong> — recording confidential business meetings of third parties without authorization.</li>
+    <li><strong>Facilitate fraud, blackmail, or extortion</strong> — using recordings to coerce, threaten, or financially harm others.</li>
+    <li><strong>Violate third-party rights</strong> — recording content that is subject to copyright, NDAs, or other legal protections without authorization.</li>
+    <li><strong>Circumvent technical controls</strong> — attempting to reverse-engineer, modify, or abuse Recora's backend API.</li>
+    <li><strong>Abuse shared infrastructure</strong> — sending excessive requests to Recora's backend to cause service disruption for other users.</li>
+    <li><strong>Record minors</strong> — recording conversations involving individuals under 18 without verifiable parental consent.</li>
+    <li><strong>Process sensitive categories of data</strong> — using Recora to record discussions of health information, financial details, or other legally sensitive categories in a context that would violate applicable privacy laws.</li>
+  </ul>
+
+  <div class="highlight-box">
+    <p>Violation of these terms may result in immediate suspension of your access to Recora and may be reported to relevant authorities.</p>
+  </div>
+
+
+  <!-- 7 -->
+  <h2>7. Intellectual Property</h2>
+  <p>You retain full ownership of all recordings and transcripts you create using Recora. Recora does not claim any intellectual property rights over your content.</p>
+  <p>The Recora extension software, including its code, design, and branding, is the intellectual property of Recora's developers. You may not copy, modify, distribute, or reverse-engineer any part of the extension without written permission.</p>
+
+
+  <!-- 8 -->
+  <h2>8. Theft, Unauthorized Access &amp; Account Security <span class="tag tag-critical">Critical</span></h2>
+
+  <h3>8.1 Your Responsibility</h3>
+  <p>You are responsible for maintaining the security of your Google account and device. Any recording made through your account — whether by you or an unauthorized party who gains access to your device — is your responsibility.</p>
+
+  <h3>8.2 Unauthorized Access to Your Recordings</h3>
+  <p>If you believe your recordings have been accessed without authorization, you should:</p>
+  <ol>
+    <li>Immediately revoke Recora's OAuth access at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.</li>
+    <li>Change your Google account password and enable two-factor authentication.</li>
+    <li>Rotate your Azure Storage credentials if you manage your own Azure account.</li>
+    <li>Contact Recora support to report the incident.</li>
+  </ol>
+
+  <h3>8.3 Report Theft or Misuse</h3>
+  <p>If you become aware that Recora is being used to illegally record you or others, or to process stolen recordings, please report this immediately. Recora is committed to cooperating with law enforcement in cases of confirmed illegal activity.</p>
+
+
+  <!-- 9 -->
+  <h2>9. Disclaimer of Warranties</h2>
+  <p>Recora is provided <strong>"as is"</strong> without warranty of any kind, either express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, accuracy of transcription, or uninterrupted availability.</p>
+  <ul>
+    <li>Recora does not guarantee 100% accuracy of AI-generated transcripts or summaries.</li>
+    <li>Recora does not guarantee that audio files will be preserved indefinitely on Azure.</li>
+    <li>Recora does not guarantee uninterrupted service availability.</li>
+  </ul>
+
+
+  <!-- 10 -->
+  <h2>10. Limitation of Liability</h2>
+  <p>To the maximum extent permitted by applicable law, Recora and its developers shall not be liable for:</p>
+  <ul>
+    <li>Any direct, indirect, incidental, special, or consequential damages arising from your use of the extension.</li>
+    <li>Legal consequences resulting from recording without proper consent.</li>
+    <li>Data loss resulting from Azure service outages, device failures, or account termination.</li>
+    <li>Unauthorized access to your recordings resulting from compromise of your Google or Azure account credentials.</li>
+    <li>Inaccuracies in AI-generated transcripts or summaries used for business, legal, or medical decisions.</li>
+  </ul>
+
+
+  <!-- 11 -->
+  <h2>11. Third-Party Services</h2>
+  <p>Recora integrates with the following third-party services. Your use of Recora constitutes acceptance of their respective terms:</p>
+  <ul>
+    <li><strong>Google</strong> — OAuth authentication, Calendar API. <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Google Terms of Service</a></li>
+    <li><strong>Deepgram</strong> — AI speech-to-text transcription. <a href="https://deepgram.com/tos" target="_blank" rel="noopener">Deepgram Terms of Service</a></li>
+    <li><strong>Microsoft Azure</strong> — Cloud audio and metadata storage. <a href="https://azure.microsoft.com/en-us/support/legal/" target="_blank" rel="noopener">Azure Terms of Service</a></li>
+    <li><strong>Render</strong> — Backend hosting. <a href="https://render.com/terms" target="_blank" rel="noopener">Render Terms of Service</a></li>
+  </ul>
+
+
+  <!-- 12 -->
+  <h2>12. Privacy Policy Summary</h2>
+  <p>A full Privacy Policy will be published separately. Key points:</p>
+  <ul>
+    <li>We collect: Google account identifier (sub), email address, recording metadata, transcripts, and calendar data you choose to interact with.</li>
+    <li>We do <strong>not</strong> collect: passwords, payment information, location data, or browsing history.</li>
+    <li>We do <strong>not</strong> sell your personal data to advertisers or data brokers.</li>
+    <li>You may request deletion of your data by contacting us at the address below.</li>
+    <li>Data is processed and stored in regions determined by your Azure Storage configuration.</li>
+  </ul>
+
+
+  <!-- 13 -->
+  <h2>13. Children's Privacy <span class="tag tag-critical">18+ Only</span></h2>
+  <div class="highlight-box">
+    <p>Recora is not intended for use by individuals under the age of 18. If you are under 18, you must not use this extension. We do not knowingly collect personal information from minors.</p>
+  </div>
+
+
+  <!-- 14 -->
+  <h2>14. Changes to These Terms</h2>
+  <p>Recora reserves the right to update these Terms &amp; Conditions at any time. Changes will be communicated via an in-extension notice. Continued use of Recora after any changes constitutes your acceptance of the new terms. If you do not agree with updated terms, you must uninstall the extension.</p>
+
+
+  <!-- 15 -->
+  <h2>15. Governing Law</h2>
+  <p>These Terms shall be governed by and construed in accordance with applicable law. Any disputes arising under these Terms shall be subject to the exclusive jurisdiction of the courts in the developer's jurisdiction, unless otherwise required by local consumer protection law.</p>
+
+
+  <!-- 16 -->
+  <h2>16. Contact</h2>
+  <p>For questions, data deletion requests, security reports, or legal inquiries, contact Recora at:</p>
+  <div class="highlight-box green">
+    <p>📧 <strong>sujalkalal015@gmail.com</strong><br>
+    Please use subject line: <em>"Recora — [Legal / Data Request / Security]"</em></p>
+  </div>
+
+  <hr class="divider">
+
+  <p style="font-size:0.85rem; color: var(--muted);">
+    By checking the "I agree to the Terms &amp; Conditions" checkbox within the Recora extension and clicking "Start Using Recora", you confirm that you are at least 18 years old, have read and understood these terms in full, and agree to be bound by them.
+  </p>
+
+  <footer>
+    Recora © 2025. All rights reserved. &nbsp;·&nbsp; Version 1.0 &nbsp;·&nbsp; Effective April 2025
+  </footer>
+
+</div>
+</body>
+</html>

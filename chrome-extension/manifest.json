@@ -27,6 +27,12 @@
       "https://www.googleapis.com/auth/calendar.events"
     ]
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["terms.html"],
+      "matches":   ["<all_urls>"]
+    }
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

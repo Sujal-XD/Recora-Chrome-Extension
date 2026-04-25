@@ -203,12 +203,12 @@ function showTab(tab) {
 }
 
 function renderProfileBtn(user) {
-  const photoHtml = user.picture
-    ? `<img class="profile-avatar" src="${escapeHtml(user.picture)}" alt="">`
+  const photoHtml = safeSrc(user.picture)
+    ? `<img class="profile-avatar" src="${escapeHtml(safeSrc(user.picture))}" alt="">`
     : `<div class="profile-initials">${escapeHtml((user.name || 'U')[0].toUpperCase())}</div>`;
 
-  const photoLgHtml = user.picture
-    ? `<img class="profile-dropdown-photo" src="${escapeHtml(user.picture)}" alt="">`
+  const photoLgHtml = safeSrc(user.picture)
+    ? `<img class="profile-dropdown-photo" src="${escapeHtml(safeSrc(user.picture))}" alt="">`
     : `<div class="profile-dropdown-photo-initials">${escapeHtml((user.name || 'U')[0].toUpperCase())}</div>`;
 
   userInfoDiv.innerHTML = `
@@ -243,8 +243,9 @@ function updateUI(user) {
   if (user) {
     loginSection.style.display = 'none';
     renderProfileBtn(user);
-    chrome.storage.local.get(['hasRecordingConsent', 'lastActiveTab'], (result) => {
-      hasConsent = result.hasRecordingConsent || false;
+    const consentKey = `hasRecordingConsent_${user.sub}`;
+    chrome.storage.local.get([consentKey, 'lastActiveTab'], (result) => {
+      hasConsent = result[consentKey] || false;
       if (hasConsent) {
         mainNav.style.display        = 'flex';
         consentSection.style.display = 'none';
@@ -468,7 +469,8 @@ consentCheckbox.onchange = () => {
 acceptConsentBtn.onclick = () => {
   if (!consentCheckbox.checked) return;
   hasConsent = true;
-  chrome.storage.local.set({ hasRecordingConsent: true }, () => {
+  const consentKey = `hasRecordingConsent_${currentUser?.sub}`;
+  chrome.storage.local.set({ [consentKey]: true, hasRecordingConsent: true }, () => {
     mainNav.style.display        = 'flex';
     consentSection.style.display = 'none';
     showTab('record');
@@ -478,7 +480,7 @@ acceptConsentBtn.onclick = () => {
 
 tcLink.onclick = (e) => {
   e.preventDefault();
-  chrome.tabs.create({ url: tcLink.href });
+  chrome.tabs.create({ url: chrome.runtime.getURL('terms.html') });
 };
 
 // ---------------------------------------------------------------------------
@@ -510,7 +512,13 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeSrc(url) {
+  // Only allow https:// image URLs — blocks data: and javascript: schemes
+  return (typeof url === 'string' && url.startsWith('https://')) ? url : '';
 }
 
 function removeCachedToken(token) {
@@ -2294,7 +2302,8 @@ function handleLogout() {
     const cleanup = () => {
       currentUser = null;
       hasConsent  = false;
-      chrome.storage.local.set({ hasRecordingConsent: false, lastActiveTab: 'record', cachedUser: null });
+      // Do NOT clear per-user consent key — user should not need to re-accept T&C on every login
+      chrome.storage.local.set({ lastActiveTab: 'record', cachedUser: null });
       updateUI(null);
       stopLocalTimer();
     };

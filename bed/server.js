@@ -136,9 +136,16 @@ app.post('/generate-sas', verifyGoogleToken, (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /generate-upload-sas  — create/write token for a specific blob
 // ---------------------------------------------------------------------------
+const SAFE_BLOB_NAME_RX = /^[a-zA-Z0-9._\-]+$/;
+
 app.post('/generate-upload-sas', verifyGoogleToken, (req, res) => {
   const { blobName } = req.body;
-  if (!blobName) return res.status(400).send('Blob name is required.');
+  if (!blobName || typeof blobName !== 'string')
+    return res.status(400).json({ error: 'Blob name is required.' });
+  if (blobName.length > 256)
+    return res.status(400).json({ error: 'Blob name too long.' });
+  if (!SAFE_BLOB_NAME_RX.test(blobName))
+    return res.status(400).json({ error: 'Blob name contains invalid characters.' });
 
   try {
     const startTime = new Date();
