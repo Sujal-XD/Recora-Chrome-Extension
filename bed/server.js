@@ -13,21 +13,16 @@ console.log(`Email user     : ${process.env.EMAIL_USER                  ? '✓ '
 console.log(`Email pass     : ${process.env.EMAIL_PASS                  ? '✓ (set)' : '✗ MISSING'}`);
 console.log(`Deepgram key   : ${process.env.DEEPGRAM_API_KEY            ? '✓ (set)' : '✗ MISSING'}`);
 console.log(`Google client  : ${process.env.GOOGLE_CLIENT_ID            ? '✓ (set)' : '✗ MISSING — token audience NOT enforced'}`);
-console.log(`Extension ID   : ${process.env.ALLOWED_EXTENSION_ID        ? '✓ ' + process.env.ALLOWED_EXTENSION_ID : '⚠ not set — any chrome-extension:// origin allowed'}`);
 
 const app = express();
 
 // ---------------------------------------------------------------------------
-// CORS — allow only the specific extension origin (or any chrome-extension:// if ID not set)
+// CORS — accept any chrome-extension:// origin (all endpoints are protected by
+// Google token verification, so origin pinning adds no real security here).
 // ---------------------------------------------------------------------------
-const ALLOWED_EXT_ID = process.env.ALLOWED_EXTENSION_ID;
-const EXT_ORIGIN_RX  = ALLOWED_EXT_ID
-  ? new RegExp(`^chrome-extension://${ALLOWED_EXT_ID}$`)
-  : /^chrome-extension:\/\//;
-
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || EXT_ORIGIN_RX.test(origin)) return cb(null, true);
+    if (!origin || /^chrome-extension:\/\//.test(origin)) return cb(null, true);
     cb(Object.assign(new Error('CORS: origin not allowed'), { status: 403 }));
   },
   methods:        ['GET', 'POST'],

@@ -115,6 +115,12 @@
               </button>
             </div>
           </div>
+          <div class="filter-bar" id="calFilterBar">
+            <button class="filter-chip active" data-cal-filter="all">All</button>
+            <button class="filter-chip" data-cal-filter="today">Today</button>
+            <button class="filter-chip" data-cal-filter="week">This Week</button>
+            <button class="filter-chip" data-cal-filter="month">30 Days</button>
+          </div>
           <div id="calEventsList" class="cal-events-list">
             <div class="cal-loading">Loading events…</div>
           </div>
@@ -238,6 +244,12 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
           </div>
+          <div class="filter-bar" id="histFilterBar">
+            <button class="filter-chip active" data-hist-filter="all">All</button>
+            <button class="filter-chip" data-hist-filter="done">Done</button>
+            <button class="filter-chip" data-hist-filter="processing">Processing</button>
+            <button class="filter-chip" data-hist-filter="failed">Failed</button>
+          </div>
           <div id="histCardsList" class="hist-cards-list">
             <div class="hist-empty">Loading recordings…</div>
           </div>
@@ -311,6 +323,83 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Support Section -->
+      <div id="supportSection" class="support-section" style="display: none;">
+        <div class="cal-topbar" style="padding: 0.6rem 0.9rem 0.4rem;">
+          <button id="supportBackBtn" class="cal-back-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            Back
+          </button>
+          <span class="cal-heading">Help &amp; Support</span>
+        </div>
+        <div class="support-scroll">
+          <a class="support-email-btn" href="mailto:recordingsatrecora@gmail.com">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            recordingsatrecora@gmail.com
+          </a>
+
+          <div class="support-section-label">Frequently Asked Questions</div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              How do I start a recording?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Go to the Record tab, optionally add a title, then click the microphone button. Recording captures your current browser tab's audio and microphone.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              How long does transcription take?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Roughly 20–30% of the recording duration. A 10-minute meeting takes about 2–3 minutes. You'll receive an email when it's ready.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              Where are my recordings stored?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Recordings are stored securely in Azure Blob Storage, scoped to your Google account. Only you can access your recordings.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              Can I export my recordings?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Yes. Open any completed recording in History, then click Export to download as WebM/WAV audio, or get the transcript/summary/MOM as a PDF via email.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              Does Recora use my audio to train AI?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Transcription uses Deepgram's API. Deepgram may retain audio per their data policy for model improvement. Recora itself does not use your data for AI training. See Terms &amp; Conditions for full details.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              My recording didn't upload — what happened?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">This usually happens if you closed the browser during upload, or if the server was temporarily unavailable. Try signing out and back in, then check History. Email support if the issue persists.</div>
+          </div>
+
+          <div class="support-faq-item">
+            <button class="support-faq-q">
+              How do I link a recording to a calendar event?
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="support-faq-a">Open the Calendar tab, tap the event, then tap "Record this Meeting". The recording will be automatically linked to that event.</div>
+          </div>
+
+          <div class="support-version">Recora v1.0</div>
+        </div>
       </div>
 
       <!-- Consent Section -->

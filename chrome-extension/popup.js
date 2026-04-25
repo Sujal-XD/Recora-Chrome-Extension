@@ -55,6 +55,9 @@ const folderFormName    = document.getElementById('folderFormName');
 const folderFormColors  = document.getElementById('folderFormColors');
 const folderFormIcons   = document.getElementById('folderFormIcons');
 const folderFormSaveBtn = document.getElementById('folderFormSaveBtn');
+// --- Support element refs ---
+const supportSection    = document.getElementById('supportSection');
+const supportBackBtn    = document.getElementById('supportBackBtn');
 // --- Calendar element refs ---
 const mainNav           = document.getElementById('mainNav');
 const navRecord         = document.getElementById('navRecord');
@@ -201,6 +204,17 @@ function showTab(tab) {
   calendarSection.style.display = tab === 'calendar' ? 'flex' : 'none';
   historySection.style.display  = tab === 'history'  ? 'flex' : 'none';
   foldersSection.style.display  = tab === 'folders'  ? 'flex' : 'none';
+  supportSection.style.display  = tab === 'support'  ? 'flex' : 'none';
+}
+
+function showGreeting(user) {
+  if (isRecording || isPaused) return;
+  const firstName = (user.given_name || (user.name || '').split(' ')[0] || 'there');
+  const h = new Date().getHours();
+  const period = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  const msg = `Good ${period}, ${firstName}!`;
+  statusDiv.textContent = msg;
+  setTimeout(() => { if (statusDiv.textContent === msg) statusDiv.textContent = 'Ready'; }, 3500);
 }
 
 function renderProfileBtn(user) {
@@ -223,6 +237,10 @@ function renderProfileBtn(user) {
         </div>
       </div>
       <div class="profile-dropdown-divider"></div>
+      <button class="profile-dropdown-help-btn" id="profileHelpBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Help &amp; Support
+      </button>
       <button class="profile-signout-btn" id="profileSignOutBtn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         Sign out
@@ -232,6 +250,11 @@ function renderProfileBtn(user) {
   document.getElementById('profileAvatarBtn').onclick = (e) => {
     e.stopPropagation();
     document.getElementById('profileDropdown').classList.toggle('open');
+  };
+
+  document.getElementById('profileHelpBtn').onclick = () => {
+    document.getElementById('profileDropdown').classList.remove('open');
+    showTab('support');
   };
 
   document.getElementById('profileSignOutBtn').onclick = () => {
@@ -252,6 +275,7 @@ function updateUI(user) {
         consentSection.style.display = 'none';
         const tab = result.lastActiveTab || 'record';
         showTab(tab);
+        if (tab === 'record') showGreeting(user);
         syncWithBackground();
         if (tab === 'calendar') loadCalendar();
         if (tab === 'history')  loadHistory();
@@ -269,6 +293,7 @@ function updateUI(user) {
     calendarSection.style.display  = 'none';
     historySection.style.display   = 'none';
     foldersSection.style.display   = 'none';
+    supportSection.style.display   = 'none';
     consentSection.style.display   = 'none';
     mainNav.style.display          = 'none';
     userInfoDiv.innerHTML          = '';
@@ -481,7 +506,7 @@ acceptConsentBtn.onclick = () => {
     mainNav.style.display        = 'flex';
     consentSection.style.display = 'none';
     showTab('record');
-    statusDiv.textContent        = 'Ready to record.';
+    if (currentUser) showGreeting(currentUser); else statusDiv.textContent = 'Ready';
   });
 };
 
@@ -496,6 +521,8 @@ tcLink.onclick = (e) => {
 navRecord.onclick = () => {
   showTab('record');
 };
+
+if (supportBackBtn) supportBackBtn.onclick = () => showTab('record');
 
 navCalendar.onclick = () => {
   showTab('calendar');
@@ -923,7 +950,7 @@ async function loadCalendar() {
     ]);
     calEvents        = evts;
     calRecordingsMap = stored.calEventRecordings || {};
-    renderCalEvents(calEvents, calRecordingsMap);
+    applyCalFilter();
   } catch (err) {
     calEventsList.innerHTML = `<div class="cal-empty"><small>${escapeHtml(err.message)}</small></div>`;
   } finally {
@@ -2020,7 +2047,7 @@ async function loadHistory() {
 
     histRecordings = mergeRecordings(localToShow, azureRecs);
     histFolders    = foldersResult.histFolders || [];
-    renderHistoryCards(histRecordings, histFolders);
+    applyHistFilter();
   } catch (err) {
     histCardsList.innerHTML = `<div class="hist-empty"><small>${escapeHtml(err.message)}</small></div>`;
   } finally {
@@ -2326,7 +2353,6 @@ signInBtn.onclick = () => {
           const finish = () => {
             chrome.storage.local.set({ cachedUser: userInfo, lastUserId: userInfo.sub });
             currentUser = userInfo;
-            statusDiv.textContent = 'Ready';
             updateUI(currentUser);
           };
           if (stored.lastUserId && stored.lastUserId !== userInfo.sub) {
@@ -2368,6 +2394,71 @@ document.addEventListener('click', () => {
   const dd = document.getElementById('profileDropdown');
   if (dd) dd.classList.remove('open');
 });
+
+// ---------------------------------------------------------------------------
+// Support — FAQ accordion
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.support-faq-q').forEach(btn => {
+  btn.onclick = () => btn.closest('.support-faq-item').classList.toggle('open');
+});
+
+// ---------------------------------------------------------------------------
+// Calendar filter chips
+// ---------------------------------------------------------------------------
+let _calFilter = 'all';
+document.querySelectorAll('[data-cal-filter]').forEach(chip => {
+  chip.onclick = () => {
+    _calFilter = chip.dataset.calFilter;
+    document.querySelectorAll('[data-cal-filter]').forEach(c => c.classList.toggle('active', c === chip));
+    applyCalFilter();
+  };
+});
+
+function applyCalFilter() {
+  const now      = new Date();
+  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+  const weekEnd  = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7);
+  const monthEnd = new Date(now); monthEnd.setDate(monthEnd.getDate() + 30);
+
+  let filtered = calEvents;
+  if (_calFilter !== 'all') {
+    filtered = calEvents.filter(ev => {
+      const start = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00');
+      if (_calFilter === 'today')  return start <= todayEnd;
+      if (_calFilter === 'week')   return start <= weekEnd;
+      if (_calFilter === 'month')  return start <= monthEnd;
+      return true;
+    });
+  }
+  renderCalEvents(filtered, calRecordingsMap);
+}
+
+// ---------------------------------------------------------------------------
+// History filter chips
+// ---------------------------------------------------------------------------
+let _histFilter = 'all';
+document.querySelectorAll('[data-hist-filter]').forEach(chip => {
+  chip.onclick = () => {
+    _histFilter = chip.dataset.histFilter;
+    document.querySelectorAll('[data-hist-filter]').forEach(c => c.classList.toggle('active', c === chip));
+    applyHistFilter();
+  };
+});
+
+function applyHistFilter() {
+  if (!histRecordings) return;
+  let filtered = histRecordings;
+  if (_histFilter !== 'all') {
+    filtered = histRecordings.filter(r => {
+      const s = r.status || 'processing';
+      if (_histFilter === 'done')       return s === 'done';
+      if (_histFilter === 'processing') return s === 'processing' || s === 'transcribing';
+      if (_histFilter === 'failed')     return s === 'upload_failed' || s === 'transcription_failed';
+      return true;
+    });
+  }
+  renderHistoryCards(filtered, histFolders);
+}
 
 // ---------------------------------------------------------------------------
 // Init on popup open
