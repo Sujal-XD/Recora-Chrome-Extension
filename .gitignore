@@ -15,14 +15,17 @@ node_modules/
 
 # Other folders not part of the extension
 fed/
-bed/
 recora-local-bot/
 
-# Root-level files
-AGENTS.md
-CLAUDE.md
-GEMINI.md
-package.json
-package-lock.json
+# Backend dependencies and secrets (track source, not deps)
+bed/node_modules/
+bed/.env
+
+# Root-level stray files (leading / = root only, won't match bed/)
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/package.json
+/package-lock.json
 *.docx
 *.zip
