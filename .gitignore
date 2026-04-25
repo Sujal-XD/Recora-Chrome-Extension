@@ -1,4 +1,28 @@
-node_modules
+node_modules/
 .env
-# Added by code-review-graph
+.env.*
+
+# AI IDE tool configs
+.claude/
+*/.claude/
+.cursor/
+.kiro/
+.opencode.json
+.mcp.json
+.cursorrules
+.windsurfrules
 .code-review-graph/
+
+# Other folders not part of the extension
+fed/
+bed/
+recora-local-bot/
+
+# Root-level files
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+package.json
+package-lock.json
+*.docx
+*.zip
