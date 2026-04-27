@@ -80,6 +80,69 @@ const calFormHeading     = document.getElementById('calFormHeading');
 const calCreateForm      = document.getElementById('calCreateForm');
 const calGuestChips      = document.getElementById('calGuestChips');
 const calGuestInput      = document.getElementById('calGuestInput');
+const calGuestSuggest    = document.getElementById('calGuestSuggest');
+
+// ---------------------------------------------------------------------------
+// Calendar — 12-hour time picker (replaces native <input type="time">)
+// ---------------------------------------------------------------------------
+(function initTimePickers() {
+  const pad2 = n => String(n).padStart(2, '0');
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const mins  = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
+  ['calStartH', 'calEndH'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      hours.map(h => `<option value="${h}">${h}</option>`).join('');
+  });
+  ['calStartM', 'calEndM'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      mins.map(m => `<option value="${m}">${pad2(m)}</option>`).join('');
+  });
+  ['calStartAmpm', 'calEndAmpm'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      '<option value="AM">AM</option><option value="PM">PM</option>';
+  });
+
+  function syncToInput(which) {
+    const prefix = which === 'start' ? 'calStart' : 'calEnd';
+    const input  = which === 'start' ? calEvtStart : calEvtEnd;
+    let h        = parseInt(document.getElementById(`${prefix}H`).value, 10);
+    const m      = parseInt(document.getElementById(`${prefix}M`).value, 10);
+    const ampm   = document.getElementById(`${prefix}Ampm`).value;
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    input.value = `${pad2(h)}:${pad2(m)}`;
+  }
+
+  ['calStartH', 'calStartM', 'calStartAmpm'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => syncToInput('start'))
+  );
+  ['calEndH', 'calEndM', 'calEndAmpm'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => syncToInput('end'))
+  );
+})();
+
+// Set both the hidden input value AND the visible 12h picker selects
+function setEvtTime(which, hhmm24) {
+  const pad2   = n => String(n).padStart(2, '0');
+  const [hStr, mStr] = hhmm24.split(':');
+  let h24 = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  // Snap to nearest 5-minute option
+  const snappedM = Math.round(m / 5) * 5 % 60;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const h12  = h24 % 12 || 12;
+  const prefix = which === 'start' ? 'calStart' : 'calEnd';
+  const input  = which === 'start' ? calEvtStart : calEvtEnd;
+  document.getElementById(`${prefix}H`).value    = h12;
+  document.getElementById(`${prefix}M`).value    = snappedM;
+  document.getElementById(`${prefix}Ampm`).value = ampm;
+  // Recalculate 24h value using snapped minute
+  let h24out = h12;
+  if (ampm === 'PM' && h12 !== 12) h24out = h12 + 12;
+  if (ampm === 'AM' && h12 === 12) h24out = 0;
+  input.value = `${pad2(h24out)}:${pad2(snappedM)}`;
+}
 const calAddMeetBtn      = document.getElementById('calAddMeetBtn');
 const calMeetLabel       = document.getElementById('calMeetLabel');
 const calEvtTitle       = document.getElementById('calEvtTitle');
@@ -568,7 +631,14 @@ function removeCachedToken(token) {
   return new Promise(resolve => chrome.identity.removeCachedAuthToken({ token }, resolve));
 }
 
+// When the user switches to a non-Chrome-primary account we store the token here
+let _overrideToken       = null;
+let _overrideTokenExpiry = 0;
+
 function getAuthToken(interactive = false) {
+  if (_overrideToken && Date.now() < _overrideTokenExpiry) {
+    return Promise.resolve(_overrideToken);
+  }
   return new Promise((resolve, reject) => {
     chrome.identity.getAuthToken({ interactive }, (token) => {
       if (chrome.runtime.lastError || !token) {
@@ -948,10 +1018,37 @@ function showEventDetail(event) {
     ${locHtml}${attHtml}${descHtml}${meetHtml}`;
 }
 
+// In-memory calendar cache — avoids re-fetching when user switches tabs within the same popup
+let _calCache     = null; // { evts, recordingsMap, ts }
+const CAL_CACHE_TTL = 90 * 1000; // 90 seconds
+
 async function loadCalendar() {
   showCalView('events');
-  calEventsList.innerHTML = '<div class="cal-loading">Loading events…</div>';
   calRefreshBtn.classList.add('spinning');
+
+  // Serve cached data instantly, then silently refresh in background
+  if (_calCache && Date.now() - _calCache.ts < CAL_CACHE_TTL) {
+    calEvents        = _calCache.evts;
+    calRecordingsMap = _calCache.recordingsMap;
+    buildContactsCache(calEvents);
+    applyCalFilter();
+    calRefreshBtn.classList.remove('spinning');
+    // Background refresh
+    Promise.all([
+      fetchCalendarEvents(),
+      new Promise(r => chrome.storage.local.get(['calEventRecordings'], r)),
+    ]).then(([evts, stored]) => {
+      calEvents        = evts;
+      calRecordingsMap = stored.calEventRecordings || {};
+      _calCache        = { evts, recordingsMap: calRecordingsMap, ts: Date.now() };
+      buildContactsCache(evts);
+      fetchContactsFromHistory();
+      applyCalFilter();
+    }).catch(() => {});
+    return;
+  }
+
+  calEventsList.innerHTML = '<div class="cal-loading">Loading events…</div>';
   try {
     const [evts, stored] = await Promise.all([
       fetchCalendarEvents(),
@@ -959,6 +1056,9 @@ async function loadCalendar() {
     ]);
     calEvents        = evts;
     calRecordingsMap = stored.calEventRecordings || {};
+    _calCache        = { evts, recordingsMap: calRecordingsMap, ts: Date.now() };
+    buildContactsCache(evts);
+    fetchContactsFromHistory(); // build richer contacts in background, no await
     applyCalFilter();
   } catch (err) {
     calEventsList.innerHTML = `<div class="cal-empty"><small>${escapeHtml(err.message)}</small></div>`;
@@ -1017,9 +1117,119 @@ function addGuestFromInput() {
 }
 
 calGuestInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addGuestFromInput(); }
+  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addGuestFromInput(); closeGuestSuggest(); }
+  if (e.key === 'Escape') closeGuestSuggest();
 });
-calGuestInput.addEventListener('blur', () => { if (calGuestInput.value.trim()) addGuestFromInput(); });
+calGuestInput.addEventListener('blur', () => {
+  // Delay so mousedown on suggestion fires first
+  setTimeout(() => {
+    if (calGuestInput.value.trim()) addGuestFromInput();
+    closeGuestSuggest();
+  }, 150);
+});
+
+// ---------------------------------------------------------------------------
+// Calendar — Recora watermark
+// ---------------------------------------------------------------------------
+function addRecoraWatermark(desc) {
+  const mark = '— Scheduled via Recora';
+  return desc ? `${desc}\n\n${mark}` : mark;
+}
+
+// ---------------------------------------------------------------------------
+// Calendar — Contact autocomplete (Google People API)
+// ---------------------------------------------------------------------------
+let _guestSearchTimer = null;
+
+function closeGuestSuggest() {
+  calGuestSuggest.style.display = 'none';
+  calGuestSuggest.innerHTML = '';
+}
+
+// Contacts cache built from calendar event attendees/organizers — no extra API needed
+const calContactsCache = new Map(); // email → { name, email }
+
+function buildContactsCache(events) {
+  for (const ev of events) {
+    const add = (email, name) => {
+      if (!email || email.endsWith('calendar.google.com') || calContactsCache.has(email)) return;
+      calContactsCache.set(email, { name: name || '', email });
+    };
+    for (const a of (ev.attendees || [])) add(a.email, a.displayName);
+    if (ev.organizer) add(ev.organizer.email, ev.organizer.displayName);
+  }
+}
+
+// Fetch past 90 days of events in the background to populate a richer contacts list
+async function fetchContactsFromHistory() {
+  try {
+    const now  = new Date();
+    const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const params = new URLSearchParams({
+      timeMin:      past.toISOString(),
+      timeMax:      now.toISOString(),
+      singleEvents: 'true',
+      maxResults:   '500',
+    });
+    const res = await calendarFetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`
+    );
+    if (res.ok) buildContactsCache((await res.json()).items || []);
+  } catch (_) {}
+}
+
+function searchContacts(query) {
+  const q = query.toLowerCase();
+  const results = [];
+  for (const c of calContactsCache.values()) {
+    if (calFormGuests.includes(c.email)) continue;
+    if (c.email.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)) {
+      results.push(c);
+      if (results.length >= 6) break;
+    }
+  }
+  return results;
+}
+
+function renderGuestSuggest(results) {
+  if (!results.length) { closeGuestSuggest(); return; }
+  calGuestSuggest.innerHTML = results.map((r, i) => {
+    const initials = r.name
+      ? r.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()
+      : r.email[0].toUpperCase();
+    return `<div class="cal-guest-suggest-item" data-i="${i}" tabindex="-1">
+      <span class="cal-guest-suggest-avatar">${escapeHtml(initials)}</span>
+      <div class="cal-guest-suggest-info">
+        ${r.name ? `<span class="cal-guest-suggest-name">${escapeHtml(r.name)}</span>` : ''}
+        <span class="cal-guest-suggest-email">${escapeHtml(r.email)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  calGuestSuggest.style.display = 'flex';
+  calGuestSuggest.querySelectorAll('.cal-guest-suggest-item').forEach((el, i) => {
+    el.addEventListener('mousedown', ev => {
+      ev.preventDefault(); // prevent blur before we handle the click
+      const { email } = results[i];
+      if (!calFormGuests.includes(email)) {
+        calFormGuests.push(email);
+        renderGuestChips();
+      }
+      calGuestInput.value = '';
+      closeGuestSuggest();
+      calGuestInput.focus();
+    });
+  });
+}
+
+calGuestInput.addEventListener('input', () => {
+  clearTimeout(_guestSearchTimer);
+  const q = calGuestInput.value.trim();
+  if (q.length < 2) { closeGuestSuggest(); return; }
+  // Debounce slightly so we don't re-render on every keystroke
+  _guestSearchTimer = setTimeout(() => {
+    renderGuestSuggest(searchContacts(q));
+  }, 150);
+});
 
 function updateMeetToggle() {
   if (calFormAddMeet) {
@@ -1072,8 +1282,8 @@ calNextMeetBtn.onclick = () => {
   if (!isAllDay) {
     const s = new Date(activeCalEvent.start.dateTime);
     const e = new Date(activeCalEvent.end.dateTime);
-    calEvtStart.value = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
-    calEvtEnd.value   = `${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
+    setEvtTime('start', `${pad2(s.getHours())}:${pad2(s.getMinutes())}`);
+    setEvtTime('end',   `${pad2(e.getHours())}:${pad2(e.getMinutes())}`);
   }
 
   calFormGuests = (activeCalEvent.attendees || [])
@@ -1128,8 +1338,8 @@ calRescheduleBtn.onclick = () => {
     const s = new Date(activeCalEvent.start.dateTime);
     const e = new Date(activeCalEvent.end.dateTime);
     calEvtDate.value  = `${s.getFullYear()}-${pad2(s.getMonth()+1)}-${pad2(s.getDate())}`;
-    calEvtStart.value = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
-    calEvtEnd.value   = `${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
+    setEvtTime('start', `${pad2(s.getHours())}:${pad2(s.getMinutes())}`);
+    setEvtTime('end',   `${pad2(e.getHours())}:${pad2(e.getMinutes())}`);
   }
   showCalView('create');
 };
@@ -1167,8 +1377,8 @@ calNewEventBtn.onclick = () => {
   eventDate.setDate(eventDate.getDate() + dateOffset);
   calEvtDate.value = `${eventDate.getFullYear()}-${pad2(eventDate.getMonth() + 1)}-${pad2(eventDate.getDate())}`;
   const hhmm = (h, m) => `${pad2(h)}:${pad2(m)}`;
-  calEvtStart.value = hhmm(startH, startM);
-  calEvtEnd.value   = hhmm(endH, endM);
+  setEvtTime('start', hhmm(startH, startM));
+  setEvtTime('end',   hhmm(endH,   endM));
 
   showCalView('create');
 };
@@ -1262,7 +1472,7 @@ calCreateForm.onsubmit = async (e) => {
 
   let realEvent;
   try {
-    realEvent = await postCalendarEvent({ title, allDay, location, description: desc, startIso, endIso, attendees, addMeet });
+    realEvent = await postCalendarEvent({ title, allDay, location, description: addRecoraWatermark(desc), startIso, endIso, attendees, addMeet });
   } catch (err) {
     calEvents = calEvents.filter(ev => !ev.id?.startsWith('optimistic_'));
     renderCalEvents(calEvents, calRecordingsMap);
@@ -1461,6 +1671,9 @@ function buildSummaryText(rec) {
 function buildPdfPayload(type, rec, calEvent) {
   return {
     type,
+    // Send the user's local date so the server footer shows the correct day
+    // regardless of what timezone Render.com runs in (UTC).
+    generatedDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
     recording: {
       title:      rec.title,
       createdAt:  rec.createdAt || rec.date,
@@ -2040,28 +2253,34 @@ function mergeRecordings(local, drive) {
 async function loadHistory() {
   showHistView('list');
   histRefreshBtn.classList.add('spinning');
-  try {
-    const azureRecs = await azureLoadRecordings();
 
-    const [localResult, foldersResult] = await Promise.all([
-      new Promise(resolve => chrome.storage.local.get(['recordings'], resolve)),
-      new Promise(resolve => chrome.storage.local.get(['histFolders'],  resolve)),
-    ]);
+  // Show local + previously cached Azure data instantly
+  const [localResult, foldersResult] = await Promise.all([
+    new Promise(r => chrome.storage.local.get(['recordings', '_cachedAzureRecs'], r)),
+    new Promise(r => chrome.storage.local.get(['histFolders'], r)),
+  ]);
+  const cachedAzure = localResult._cachedAzureRecs || [];
+  const azureIds    = new Set(cachedAzure.map(r => r.id));
+  const localToShow = (localResult.recordings || []).filter(r =>
+    r.userId === currentUser?.sub &&
+    (r.status === 'processing' || r.status === 'transcribing' || !azureIds.has(r.id))
+  );
+  histRecordings = mergeRecordings(localToShow, cachedAzure);
+  histFolders    = foldersResult.histFolders || [];
+  applyHistFilter();
+  histRefreshBtn.classList.remove('spinning');
 
-    const azureIds    = new Set(azureRecs.map(r => r.id));
-    const localToShow = (localResult.recordings || []).filter(r =>
+  // Refresh from Azure in background — updates cache + re-renders when done
+  azureLoadRecordings().then(azureRecs => {
+    chrome.storage.local.set({ _cachedAzureRecs: azureRecs });
+    const freshIds    = new Set(azureRecs.map(r => r.id));
+    const freshLocal  = (localResult.recordings || []).filter(r =>
       r.userId === currentUser?.sub &&
-      (r.status === 'processing' || r.status === 'transcribing' || !azureIds.has(r.id))
+      (r.status === 'processing' || r.status === 'transcribing' || !freshIds.has(r.id))
     );
-
-    histRecordings = mergeRecordings(localToShow, azureRecs);
-    histFolders    = foldersResult.histFolders || [];
+    histRecordings = mergeRecordings(freshLocal, azureRecs);
     applyHistFilter();
-  } catch (err) {
-    histCardsList.innerHTML = `<div class="hist-empty"><small>${escapeHtml(err.message)}</small></div>`;
-  } finally {
-    histRefreshBtn.classList.remove('spinning');
-  }
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -2386,20 +2605,46 @@ function handleSwitchAccount() {
   chrome.identity.getAuthToken({ interactive: false }, (token) => {
     void chrome.runtime.lastError;
     const doSwitch = () => {
+      _overrideToken       = null;
+      _overrideTokenExpiry = 0;
       currentUser = null;
       hasConsent  = false;
       chrome.storage.local.set({ lastActiveTab: 'record', cachedUser: null, lastUserId: null });
       updateUI(null);
       stopLocalTimer();
-      // Small delay so UI resets before interactive prompt opens
       setTimeout(() => {
-        statusDiv.textContent = 'Signing in...';
-        chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
-          if (chrome.runtime.lastError || !newToken) {
-            statusDiv.textContent = `Sign-in failed: ${chrome.runtime.lastError?.message || 'Unknown error'}`;
+        statusDiv.textContent = 'Choose account…';
+        // Use launchWebAuthFlow with prompt=select_account so user can pick any Google account,
+        // not just the one Chrome is signed into as the primary profile.
+        const scopes = [
+          'openid profile email',
+          'https://www.googleapis.com/auth/calendar.readonly',
+          'https://www.googleapis.com/auth/calendar.events',
+        ].join(' ');
+        const redirectUri = chrome.identity.getRedirectURL();
+        const authUrl =
+          'https://accounts.google.com/o/oauth2/auth' +
+          '?client_id=140703625037-9e2rur2157bd85qr83ne9i76d028gn8n.apps.googleusercontent.com' +
+          '&response_type=token' +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&scope=${encodeURIComponent(scopes)}` +
+          '&prompt=select_account';
+        chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (responseUrl) => {
+          if (chrome.runtime.lastError || !responseUrl) {
+            statusDiv.textContent = `Sign-in failed: ${chrome.runtime.lastError?.message || 'Cancelled'}`;
             return;
           }
-          handleAuthToken(newToken);
+          try {
+            const params     = new URLSearchParams(new URL(responseUrl).hash.slice(1));
+            const newToken   = params.get('access_token');
+            const expiresIn  = parseInt(params.get('expires_in') || '3600', 10);
+            if (!newToken) throw new Error('No access token received');
+            _overrideToken       = newToken;
+            _overrideTokenExpiry = Date.now() + (expiresIn - 60) * 1000;
+            handleAuthToken(newToken);
+          } catch (err) {
+            statusDiv.textContent = `Sign-in failed: ${err.message}`;
+          }
         });
       }, 150);
     };
@@ -2416,6 +2661,8 @@ function handleLogout() {
   chrome.identity.getAuthToken({ interactive: false }, (token) => {
     void chrome.runtime.lastError;
     const cleanup = () => {
+      _overrideToken       = null;
+      _overrideTokenExpiry = 0;
       currentUser = null;
       hasConsent  = false;
       // Do NOT clear per-user consent key — user should not need to re-accept T&C on every login

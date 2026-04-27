@@ -15,7 +15,8 @@
     "https://recorderextension.blob.core.windows.net/*",
     "http://localhost:5000/*",
     "https://recora-chrome-extension.onrender.com/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://people.googleapis.com/*"
   ],
   "oauth2": {
     "client_id": "140703625037-9e2rur2157bd85qr83ne9i76d028gn8n.apps.googleusercontent.com",

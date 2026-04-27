@@ -1021,6 +1021,41 @@ input[type="time"].cal-input {
   line-height: 1;
 }
 
+/* 12-hour time picker */
+.cal-tp {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cal-tp-sel {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--text-light);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  padding: 0.38rem 0.25rem;
+  outline: none;
+  cursor: pointer;
+  color-scheme: dark;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+.cal-tp-sel:focus {
+  border-color: rgba(139,92,246,0.6);
+  background: rgba(139,92,246,0.07);
+}
+.cal-tp-h    { width: 36px; }
+.cal-tp-m    { width: 40px; }
+.cal-tp-ampm { width: 44px; }
+.cal-tp-colon {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  user-select: none;
+}
+
 /* Inline error in create form */
 .cal-form-error {
   color: var(--danger);
@@ -1894,6 +1929,7 @@ input[type="time"].cal-input {
   gap: 0.35rem;
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 .cal-guest-chips {
   display: flex;
@@ -1935,6 +1971,66 @@ input[type="time"].cal-input {
 
 .cal-guest-input {
   font-size: 0.82rem;
+}
+
+/* Contact autocomplete dropdown */
+.cal-guest-suggest {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #1c1830;
+  border: 1px solid rgba(139,92,246,0.4);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  flex-direction: column;
+  overflow: hidden;
+}
+.cal-guest-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.cal-guest-suggest-item:hover,
+.cal-guest-suggest-item:focus {
+  background: rgba(139,92,246,0.16);
+}
+.cal-guest-suggest-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(124,58,237,0.55);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+.cal-guest-suggest-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cal-guest-suggest-name {
+  font-size: 0.78rem;
+  color: var(--text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-guest-suggest-email {
+  font-size: 0.71rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Google Meet row */

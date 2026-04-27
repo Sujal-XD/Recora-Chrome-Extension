@@ -263,11 +263,11 @@ app.post('/send-recording-email', verifyGoogleToken, emailLimiter, async (req, r
 // ---------------------------------------------------------------------------
 const ALLOWED_TYPES = ['mom', 'summary', 'transcript'];
 
-async function buildDocPdf(type, recording, calEvent) {
+async function buildDocPdf(type, recording, calEvent, generatedDate) {
   if (!ALLOWED_TYPES.includes(type)) throw new Error(`Unknown type: ${type}`);
-  if (type === 'mom')        return generateMomPdf(recording, calEvent);
-  if (type === 'summary')    return generateSummaryPdf(recording);
-  return generateTranscriptPdf(recording);
+  if (type === 'mom')        return generateMomPdf(recording, calEvent, generatedDate);
+  if (type === 'summary')    return generateSummaryPdf(recording, generatedDate);
+  return generateTranscriptPdf(recording, generatedDate);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,11 +279,11 @@ app.post(
   verifyGoogleToken,
   express.json({ limit: '2mb' }),
   async (req, res) => {
-    const { type, recording, calEvent } = req.body || {};
+    const { type, recording, calEvent, generatedDate } = req.body || {};
     if (!type || !recording) return res.status(400).json({ error: '`type` and `recording` are required.' });
 
     try {
-      const pdfBuf = await buildDocPdf(type, recording, calEvent || null);
+      const pdfBuf = await buildDocPdf(type, recording, calEvent || null, generatedDate || null);
       const safe   = (recording.title || 'document').replace(/[^a-z0-9_\- ]/gi, '_').trim();
       res.set('Content-Type',        'application/pdf');
       res.set('Content-Disposition', `attachment; filename="${safe}_${type}.pdf"`);
@@ -306,11 +306,11 @@ app.post(
   emailLimiter,
   express.json({ limit: '2mb' }),
   async (req, res) => {
-    const { type, recording, calEvent } = req.body || {};
+    const { type, recording, calEvent, generatedDate } = req.body || {};
     if (!type || !recording) return res.status(400).json({ error: '`type` and `recording` are required.' });
 
     try {
-      const pdfBuf = await buildDocPdf(type, recording, calEvent || null);
+      const pdfBuf = await buildDocPdf(type, recording, calEvent || null, generatedDate || null);
       await sendDocumentEmail(req.userEmail, type, recording.title, pdfBuf);
       res.json({ success: true });
     } catch (err) {

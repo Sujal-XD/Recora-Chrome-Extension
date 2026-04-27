@@ -30,7 +30,7 @@ function fmtDur(dur) {
 }
 
 // ── Core builder ──────────────────────────────────────────────────────────────
-function buildPdf(label, title, date, duration, drawBody) {
+function buildPdf(label, title, date, duration, drawBody, generatedDate) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -86,7 +86,9 @@ function buildPdf(label, title, date, duration, drawBody) {
       drawBody(doc, W, M, H);
 
       // ── Footer on all pages ───────────────────────────────────────────────
-      const today  = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      // Use the client-supplied date so the footer matches the user's local timezone,
+      // not the server's UTC clock (which can be a day behind for IST users after midnight).
+      const today  = generatedDate || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
       const range  = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i++) {
         doc.switchToPage(range.start + i);
@@ -160,7 +162,7 @@ function drawTranscript(doc, W, M, transcript, withDivider) {
 }
 
 // ── Public generators ─────────────────────────────────────────────────────────
-function generateMomPdf(rec, calEvent) {
+function generateMomPdf(rec, calEvent, generatedDate) {
   const attendees = (calEvent?.attendees || [])
     .map(a => a.displayName || a.email)
     .filter(Boolean);
@@ -174,26 +176,26 @@ function generateMomPdf(rec, calEvent) {
     drawSection(doc, W, M, 'Action Items', s.action_items || [], C.teal);
 
     drawTranscript(doc, W, M, rec.transcript, true);
-  });
+  }, generatedDate);
 }
 
-function generateSummaryPdf(rec) {
+function generateSummaryPdf(rec, generatedDate) {
   return buildPdf('Meeting Summary', rec.title, rec.createdAt, rec.duration, (doc, W, M) => {
     const s = rec.summary || {};
     drawSection(doc, W, M, 'Key Points',   s.key_points   || [], C.purple);
     drawSection(doc, W, M, 'Decisions',    s.decisions    || [], C.amber);
     drawSection(doc, W, M, 'Action Items', s.action_items || [], C.teal);
-  });
+  }, generatedDate);
 }
 
-function generateTranscriptPdf(rec) {
+function generateTranscriptPdf(rec, generatedDate) {
   return buildPdf('Meeting Transcript', rec.title, rec.createdAt, rec.duration, (doc, W, M) => {
     if (!(rec.transcript || []).length) {
       doc.fillColor(C.muted).font('Helvetica').fontSize(10).text('No transcript available.', M);
       return;
     }
     drawTranscript(doc, W, M, rec.transcript, false);
-  });
+  }, generatedDate);
 }
 
 module.exports = { generateMomPdf, generateSummaryPdf, generateTranscriptPdf };

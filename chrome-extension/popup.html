@@ -177,12 +177,24 @@
                 <div id="calTimeRow" class="cal-time-block">
                   <div class="cal-time-pair">
                     <span class="cal-time-label">Start</span>
-                    <input type="time" id="calEvtStart" class="cal-input" lang="en-GB">
+                    <input type="time" id="calEvtStart" style="display:none" tabindex="-1">
+                    <div class="cal-tp">
+                      <select class="cal-tp-sel cal-tp-h" id="calStartH"></select>
+                      <span class="cal-tp-colon">:</span>
+                      <select class="cal-tp-sel cal-tp-m" id="calStartM"></select>
+                      <select class="cal-tp-sel cal-tp-ampm" id="calStartAmpm"></select>
+                    </div>
                   </div>
                   <span class="cal-time-sep">–</span>
                   <div class="cal-time-pair">
                     <span class="cal-time-label">End</span>
-                    <input type="time" id="calEvtEnd" class="cal-input" lang="en-GB">
+                    <input type="time" id="calEvtEnd" style="display:none" tabindex="-1">
+                    <div class="cal-tp">
+                      <select class="cal-tp-sel cal-tp-h" id="calEndH"></select>
+                      <span class="cal-tp-colon">:</span>
+                      <select class="cal-tp-sel cal-tp-m" id="calEndM"></select>
+                      <select class="cal-tp-sel cal-tp-ampm" id="calEndAmpm"></select>
+                    </div>
                   </div>
                 </div>
                 <label class="cal-allday-row">
@@ -199,6 +211,7 @@
                   <div class="cal-guests-wrap">
                     <div id="calGuestChips" class="cal-guest-chips"></div>
                     <input type="email" id="calGuestInput" class="cal-input cal-guest-input" placeholder="Add guests by email" autocomplete="off">
+                    <div id="calGuestSuggest" class="cal-guest-suggest" style="display:none;"></div>
                   </div>
                 </div>
               </div>
