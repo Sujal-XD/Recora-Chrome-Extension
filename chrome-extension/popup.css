@@ -83,9 +83,13 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.2rem 1.5rem;
+  padding: 0.7rem 1.25rem;
   border-bottom: 1px solid var(--surface-border);
-  background: linear-gradient(to bottom, rgba(15,23,42,0.4), transparent);
+  background: linear-gradient(to bottom, rgba(15,23,42,0.5), transparent);
+  order: 1;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
 }
 
 .logo-wrapper {
@@ -109,7 +113,7 @@ body {
   letter-spacing: 0.5px;
 }
 
-.user-info { position: relative; }
+.user-info { position: relative; z-index: 500; }
 
 /* Avatar button */
 .profile-btn {
@@ -161,7 +165,7 @@ body {
   border-radius: 16px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
   backdrop-filter: blur(24px);
-  z-index: 200;
+  z-index: 9000;
   opacity: 0;
   transform: translateY(-8px) scale(0.96);
   pointer-events: none;
@@ -268,9 +272,11 @@ body {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  padding: 2rem 1.5rem;
+  padding: 0.65rem 1.5rem 0.8rem;
   overflow-y: auto;
   position: relative;
+  order: 2;
+  min-height: 0;
 }
 
 .view-section {
@@ -279,9 +285,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   text-align: center;
 }
+
+/* Login section stays centered */
+#loginSection { justify-content: center; }
+/* Consent section stays centered */
+#consentSection { justify-content: center; }
 
 .fade-in {
   animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -354,6 +365,98 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
   100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
 }
 
+/* Recorder section top context bar */
+.rec-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.25rem 0.15rem 0.6rem;
+  flex-shrink: 0;
+}
+.rec-date-pill {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 0.3px;
+}
+.rec-ready-dot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(139,92,246,0.7);
+  letter-spacing: 0.4px;
+}
+.rec-ready-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.8;
+  animation: recDotPulse 2.5s infinite ease-in-out;
+}
+@keyframes recDotPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+.rec-ready-dot.recording { color: rgba(239,68,68,0.85); }
+.rec-ready-dot.recording::before { background: var(--danger); animation: recDotPulse 1.2s infinite ease-in-out; }
+
+/* Calendar date pick row */
+.cal-datepick-row {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem 0.4rem;
+}
+.cal-datepick-row.visible { display: flex; }
+.cal-daterange-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.35);
+  border-radius: 8px;
+  color: var(--text-light);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.18s;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.cal-daterange-input:focus { border-color: rgba(139,92,246,0.7); }
+
+/* Date chip with icon */
+.cal-date-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Show-more button in calendar event list */
+.cal-show-more-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0.22rem 0.6rem;
+  margin: 0.1rem 0.3rem 0.3rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.cal-show-more-btn:hover { background: rgba(139,92,246,0.12); color: #c4b5fd; }
+
 /* Pre-recording form */
 .rec-pre-form {
   display: flex;
@@ -400,11 +503,11 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
 .timer-display {
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
-  font-size: 3.5rem;
+  font-size: 3rem;
   font-weight: 700;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.4rem;
   letter-spacing: -1px;
-  text-shadow: 0 0 20px rgba(255,255,255,0.2);
+  text-shadow: 0 0 30px rgba(139,92,246,0.3), 0 0 8px rgba(255,255,255,0.12);
   transition: color 0.3s ease;
 }
 
@@ -412,8 +515,8 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.1rem;
-  margin-bottom: 1.5rem;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
 }
 
 .record-btn-wrapper {
@@ -567,35 +670,64 @@ p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; font-weig
 .btn-ghost:hover { background: rgba(255,255,255,0.05); color: var(--text-light); }
 
 /* ============================================================
-   Navigation Tabs
+   Navigation Tabs — bottom bar
    ============================================================ */
 .main-nav {
   display: flex;
-  border-bottom: 1px solid var(--surface-border);
-  background: rgba(0, 0, 0, 0.18);
+  order: 3;
   flex-shrink: 0;
+  margin: 0 8px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.13);
+  background: rgba(8, 12, 28, 0.52);
+  backdrop-filter: blur(32px) saturate(1.5);
+  -webkit-backdrop-filter: blur(32px) saturate(1.5);
+  box-shadow: 0 -2px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+  padding: 0.25rem 0.35rem 0.3rem;
 }
 
 .nav-tab {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0.6rem 0;
+  gap: 3px;
+  padding: 0.45rem 0 0.3rem;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
+  border-top: 2px solid transparent;
+  color: rgba(255,255,255,0.55);
   font-family: 'Outfit', sans-serif;
-  font-size: 0.8rem;
-  font-weight: 500;
+  font-size: 0.63rem;
+  font-weight: 600;
   cursor: pointer;
-  letter-spacing: 0.3px;
-  transition: color 0.2s, border-color 0.2s;
+  letter-spacing: 0.4px;
+  border-radius: 10px;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
 }
-.nav-tab:hover { color: var(--text-light); }
-.nav-tab.active { color: var(--text-light); border-bottom-color: var(--primary); }
+.nav-tab:hover { color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.05); }
+.nav-tab.active {
+  color: var(--primary);
+  border-top-color: var(--primary);
+  background: rgba(139,92,246,0.1);
+}
+
+.nav-tab-icon {
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Scale up the SVG inside nav tabs for the bottom bar */
+.nav-tab svg {
+  width: 17px;
+  height: 17px;
+  transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+.nav-tab.active svg { transform: scale(1.12); }
 
 /* ============================================================
    Calendar Section
@@ -1050,6 +1182,10 @@ input[type="time"].cal-input {
 .cal-tp-h    { width: 36px; }
 .cal-tp-m    { width: 40px; }
 .cal-tp-ampm { width: 44px; }
+.cal-tp-sel option {
+  background: #1a1040;
+  color: #e2e8f0;
+}
 .cal-tp-colon {
   color: var(--text-muted);
   font-size: 0.85rem;
@@ -1093,6 +1229,7 @@ input[type="time"].cal-input {
   flex-direction: column;
   gap: 0.55rem;
   padding-right: 2px;
+  padding-top: 0.35rem;
 }
 .hist-cards-list::-webkit-scrollbar { width: 4px; }
 .hist-cards-list::-webkit-scrollbar-track { background: transparent; }
@@ -1117,9 +1254,15 @@ input[type="time"].cal-input {
   flex-direction: column;
   gap: 0.45rem;
   flex-shrink: 0;
-  transition: border-color 0.18s;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  will-change: transform;
+  transform: translateZ(0);
 }
-.hist-card:hover { border-color: rgba(139,92,246,0.3); }
+.hist-card:hover {
+  border-color: rgba(139,92,246,0.35);
+  background: rgba(255,255,255,0.05);
+  box-shadow: inset 3px 0 0 var(--primary), 0 4px 20px rgba(0,0,0,0.25);
+}
 
 .hist-card-header {
   display: flex;
@@ -1706,10 +1849,16 @@ input[type="time"].cal-input {
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.18s;
+  transition: background 0.15s, border-color 0.18s, box-shadow 0.18s;
   flex-shrink: 0;
+  will-change: transform;
+  transform: translateZ(0);
 }
-.folder-card:hover { background: rgba(255,255,255,0.06); }
+.folder-card:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
 
 .folder-card-icon {
   width: 36px;
@@ -2269,11 +2418,30 @@ input[type="time"].cal-input {
 /* ============================================================
    Filter bar — shared by Calendar and History
    ============================================================ */
+.hist-est-note {
+  font-size: 0.62rem;
+  color: #fbbf24;
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 .filter-bar {
   display: flex;
   gap: 0.35rem;
-  padding: 0.45rem 0.75rem 0;
+  padding: 0.45rem 0.75rem 0.4rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  margin-bottom: 0.1rem;
+}
+.filter-bar.expanded {
   flex-wrap: wrap;
+  overflow: visible;
+}
+.filter-more-btn {
+  display: none;
+  flex-shrink: 0;
 }
 .filter-chip {
   padding: 3px 10px;

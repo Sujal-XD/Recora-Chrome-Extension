@@ -86,6 +86,7 @@ function getChromeAuthToken() {
     recordingState.userId         = s.userId        || null;
     recordingState.startTime      = s.startTime     || Date.now();
     recordingState.totalPausedMs  = s.totalPausedMs || 0;
+    recordingState.userEmail       = s.userEmail      || '';
     recordingState.recTitle       = s.recTitle      || '';
     recordingState.recDescription = s.recDescription || '';
 
@@ -226,6 +227,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     recordingState.userEmail      = message.userEmail      || '';
     recordingState.recTitle       = message.recTitle       || '';
     recordingState.recDescription = message.recDesc        || '';
+    // Persist email info to a SEPARATE key that the startup IIFE never
+    // touches, so it survives SW restarts regardless of any race with
+    // the hasDocument() check that can wipe recordingState.
+    chrome.storage.local.set({ _recordingEmailInfo: {
+      userEmail: recordingState.userEmail,
+      recTitle:  recordingState.recTitle,
+      recDescription: recordingState.recDescription,
+    }});
     ensureOffscreenDocument()
       .then(() => {
         chrome.runtime.sendMessage(
@@ -283,7 +292,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.storage.local.set({ recordingState: {
       isRecording: true, isPaused: false,
       startTime: message.startTime, totalPausedMs: 0,
-      userId: recordingState.userId, recTitle: recordingState.recTitle, recDescription: recordingState.recDescription,
+      userId: recordingState.userId, userEmail: recordingState.userEmail,
+      recTitle: recordingState.recTitle, recDescription: recordingState.recDescription,
     }});
     broadcastState({ status: 'recording' });
     return false;
@@ -317,113 +327,151 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   // Offscreen → blob ready in IndexedDB
   if (message.action === 'offscreenRecordingStopped') {
+    // Capture in-memory values BEFORE clearing (may already be populated on short recordings)
+    const memEmail = recordingState.userEmail;
+    const memTitle = recordingState.recTitle;
+    const memDesc  = recordingState.recDescription;
+
     recordingState.isRecording    = false;
     recordingState.isPaused       = false;
     recordingState.startTime      = null;
     recordingState.pauseStartTime = null;
     recordingState.totalPausedMs  = 0;
-    chrome.storage.local.set({ recordingState: { isRecording: false } });
     broadcastState({ status: 'uploading' });
 
-    const recId   = `rec_${Date.now()}`;
-    const recDate = new Date();
-    const syncUserId  = message.userId;
-    const emailTo     = recordingState.userEmail;
-    const emailTitle  = recordingState.recTitle ||
-      `Recording — ${recDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    // Wrap in async IIFE so we can await chrome.storage.local.get
+    // BEFORE the startup IIFE's hasDocument() race can wipe recordingState.
+    (async () => {
+      // Read email/title/description from the SEPARATE _recordingEmailInfo key.
+      // This key is never touched by the startup IIFE, so it's immune to
+      // the hasDocument() race that can wipe recordingState to {isRecording:false}
+      // and destroy userEmail before we read it.
+      const snap       = await chrome.storage.local.get(['_recordingEmailInfo', 'recordingState']);
+      const emailInfo  = snap._recordingEmailInfo || {};
+      const persisted  = snap.recordingState || {};
+      const emailTo    = emailInfo.userEmail      || persisted.userEmail      || memEmail || '';
+      const recTitle   = emailInfo.recTitle        || persisted.recTitle        || memTitle || '';
+      const recDesc    = emailInfo.recDescription  || persisted.recDescription  || memDesc  || '';
 
-    function patchRec(patch) {
+      // Clean up both keys now that we've read what we need
+      chrome.storage.local.set({ recordingState: { isRecording: false } });
+      chrome.storage.local.remove(['_recordingEmailInfo']);
+
+      const recId   = `rec_${Date.now()}`;
+      const recDate = new Date();
+      const syncUserId  = message.userId;
+
+      // Link pending calendar event to this recording immediately (avoids popup race condition)
+      chrome.storage.local.get(['pendingCalEventLink', 'calEventRecordings'], r => {
+        if (r.pendingCalEventLink) {
+          const linkKey = `callink_${r.pendingCalEventLink.id}`;
+          const map = r.calEventRecordings || {};
+          map[linkKey] = { recordingId: recId, event: r.pendingCalEventLink };
+          chrome.storage.local.set({ calEventRecordings: map });
+          chrome.storage.local.remove(['pendingCalEventLink']);
+        }
+      });
+      const emailTitle  = recTitle ||
+        `Recording — ${recDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+      function patchRec(patch) {
+        chrome.storage.local.get(['recordings'], result => {
+          const recs = result.recordings || [];
+          const idx  = recs.findIndex(r => r.id === recId);
+          if (idx !== -1) Object.assign(recs[idx], patch);
+          chrome.storage.local.set({ recordings: recs });
+        });
+      }
+
+      // Skeleton record appears in History immediately
       chrome.storage.local.get(['recordings'], result => {
         const recs = result.recordings || [];
-        const idx  = recs.findIndex(r => r.id === recId);
-        if (idx !== -1) Object.assign(recs[idx], patch);
-        chrome.storage.local.set({ recordings: recs });
+        recs.unshift({
+          id:          recId,
+          userId:      message.userId,
+          title:       recTitle ||
+                         `Recording — ${recDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
+          description: recDesc || '',
+          date:        recDate.toISOString(),
+          duration:    message.duration,
+          audio_url:   '',
+          wav_url:     '',
+          transcript:  [],
+          summary:     { key_points: [], decisions: [], action_items: [] },
+          status:      'processing',
+        });
+        chrome.storage.local.set({ recordings: recs }, () => {
+          broadcastState({ status: 'transcribing', recId });
+        });
       });
-    }
 
-    // Skeleton record appears in History immediately
-    chrome.storage.local.get(['recordings'], result => {
-      const recs = result.recordings || [];
-      recs.unshift({
-        id:          recId,
-        userId:      message.userId,
-        title:       recordingState.recTitle ||
-                       `Recording — ${recDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
-        description: recordingState.recDescription || '',
-        date:        recDate.toISOString(),
-        duration:    message.duration,
-        audio_url:   '',
-        wav_url:     '',
-        transcript:  [],
-        summary:     { key_points: [], decisions: [], action_items: [] },
-        status:      'processing',
-      });
-      chrome.storage.local.set({ recordings: recs }, () => {
-        broadcastState({ status: 'transcribing', recId });
-      });
-    });
+      // Read blob from IDB (no size limit, no base64 overhead)
+      idbGet(message.idbKey)
+        .then(blob => {
+          idbDelete(message.idbKey); // clean up IDB entry
 
-    // Read blob from IDB (no size limit, no base64 overhead)
-    idbGet(message.idbKey)
-      .then(blob => {
-        idbDelete(message.idbKey); // clean up IDB entry
-
-        if (!blob) {
-          patchRec({ status: 'upload_failed', transcription_error: 'Audio data not found in IDB' });
-          broadcastState({ status: 'upload_failed', error: 'Audio data not found' });
-          closeOffscreenDocument();
-          return;
-        }
-
-        // Upload WebM to Azure
-        uploadBlobWithRestApi(blob, syncUserId, message.duration, 'webm')
-          .then(fullBlobPath => {
-            const audioUrl = `https://recorderextension.blob.core.windows.net/meeting-audio/${fullBlobPath}`;
-            patchRec({ audio_url: audioUrl });
-            broadcastState({ status: 'upload_success' });
+          if (!blob) {
+            patchRec({ status: 'upload_failed', transcription_error: 'Audio data not found in IDB' });
+            broadcastState({ status: 'upload_failed', error: 'Audio data not found' });
             closeOffscreenDocument();
-            syncMetadataToAzure(syncUserId);
+            return;
+          }
 
-            if (emailTo) {
-              getChromeAuthToken()
-                .then(authToken => fetch('https://recora-chrome-extension.onrender.com/send-recording-email', {
-                  method:  'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                  body: JSON.stringify({ downloadLink: audioUrl, duration: message.duration, blobPath: fullBlobPath, title: emailTitle }),
-                }))
-                .catch(err => console.warn('Email notification failed:', err.message));
-            }
-          })
-          .catch(err => {
-            broadcastState({ status: 'upload_failed', error: err.message });
-            closeOffscreenDocument();
-            patchRec({ status: 'upload_failed' });
-          });
-
-        // Transcription — runs independently of upload
-        if (typeof transcribeAudio === 'function') {
-          getChromeAuthToken()
-            .then(authToken => transcribeAudio(blob, authToken))
-            .then(({ transcript, summary }) => {
-              patchRec({ transcript, summary, status: 'done' });
-              broadcastState({ status: 'transcription_done', recId });
+          // Upload WebM to Azure
+          uploadBlobWithRestApi(blob, syncUserId, message.duration, 'webm')
+            .then(fullBlobPath => {
+              const audioUrl = `https://recorderextension.blob.core.windows.net/meeting-audio/${fullBlobPath}`;
+              patchRec({ audio_url: audioUrl });
+              broadcastState({ status: 'upload_success' });
+              closeOffscreenDocument();
               syncMetadataToAzure(syncUserId);
+
+              if (emailTo) {
+                const emailBody = JSON.stringify({ downloadLink: audioUrl, duration: message.duration, blobPath: fullBlobPath, title: emailTitle });
+                const doEmailFetch = authToken =>
+                  fetch('https://recora-chrome-extension.onrender.com/send-recording-email', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: emailBody,
+                  }).then(res => { if (!res.ok) throw new Error(`email-api:${res.status}`); });
+                // Retry once immediately — handles transient errors and Render.com cold starts
+                getChromeAuthToken()
+                  .then(t => doEmailFetch(t))
+                  .catch(() => getChromeAuthToken().then(t => doEmailFetch(t)))
+                  .catch(err => console.warn('Email notification failed:', err.message));
+              }
             })
             .catch(err => {
-              patchRec({ status: 'transcription_failed', transcription_error: err.message });
-              broadcastState({ status: 'transcription_done', recId });
-              syncMetadataToAzure(syncUserId);
+              broadcastState({ status: 'upload_failed', error: err.message });
+              closeOffscreenDocument();
+              patchRec({ status: 'upload_failed' });
             });
-        } else {
-          patchRec({ status: 'done' });
-          syncMetadataToAzure(syncUserId);
-        }
-      })
-      .catch(err => {
-        patchRec({ status: 'upload_failed', transcription_error: err.message });
-        broadcastState({ status: 'upload_failed', error: err.message });
-        closeOffscreenDocument();
-      });
+
+          // Transcription — runs independently of upload
+          if (typeof transcribeAudio === 'function') {
+            getChromeAuthToken()
+              .then(authToken => transcribeAudio(blob, authToken))
+              .then(({ transcript, summary }) => {
+                patchRec({ transcript, summary, status: 'done' });
+                broadcastState({ status: 'transcription_done', recId });
+                syncMetadataToAzure(syncUserId);
+              })
+              .catch(err => {
+                patchRec({ status: 'transcription_failed', transcription_error: err.message });
+                broadcastState({ status: 'transcription_done', recId });
+                syncMetadataToAzure(syncUserId);
+              });
+          } else {
+            patchRec({ status: 'done' });
+            syncMetadataToAzure(syncUserId);
+          }
+        })
+        .catch(err => {
+          patchRec({ status: 'upload_failed', transcription_error: err.message });
+          broadcastState({ status: 'upload_failed', error: err.message });
+          closeOffscreenDocument();
+        });
+    })();
 
     return false;
   }

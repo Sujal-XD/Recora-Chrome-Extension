@@ -174,6 +174,7 @@ let calRecordingsMap = {};        // calEventRecordings from storage, kept in sy
 let calFormGuests    = [];        // array of email strings for current form
 let calFormAddMeet   = false;     // whether to create Google Meet link
 let _lastRecordingElapsedMs = 0;  // captured at upload-start to estimate transcription time
+let _transcriptionEstMins   = 0;  // estimated minutes until transcription completes
 
 // ---------------------------------------------------------------------------
 // Timer helpers (display only — source of truth is background.js)
@@ -212,8 +213,22 @@ function freezeLocalTimer() {
 // ---------------------------------------------------------------------------
 // UI state helpers
 // ---------------------------------------------------------------------------
+const recDateLabel = document.getElementById('recDateLabel');
+const recReadyDot  = document.getElementById('recReadyDot');
+
+function updateRecContextBar(recording) {
+  if (recDateLabel) {
+    recDateLabel.textContent = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  if (recReadyDot) {
+    recReadyDot.textContent = recording ? 'Live' : 'Ready';
+    recReadyDot.classList.toggle('recording', !!recording);
+  }
+}
+
 function setRecordingUI(recording) {
   isRecording = recording;
+  updateRecContextBar(recording);
   if (recording) {
     recPreRecordForm.style.display = 'none';
     recordBtn.classList.replace('idle', 'recording');
@@ -256,6 +271,13 @@ function setPausedUI(paused) {
   }
 }
 
+function checkFilterOverflow(barId, moreBtnId) {
+  const bar     = document.getElementById(barId);
+  const moreBtn = document.getElementById(moreBtnId);
+  if (!bar || !moreBtn) return;
+  moreBtn.style.display = bar.scrollWidth > bar.clientWidth + 2 ? '' : 'none';
+}
+
 function showTab(tab) {
   activeTab = tab;
   chrome.storage.local.set({ lastActiveTab: tab });
@@ -268,6 +290,8 @@ function showTab(tab) {
   historySection.style.display  = tab === 'history'  ? 'flex' : 'none';
   foldersSection.style.display  = tab === 'folders'  ? 'flex' : 'none';
   supportSection.style.display  = tab === 'support'  ? 'flex' : 'none';
+  if (tab === 'calendar') requestAnimationFrame(() => checkFilterOverflow('calFilterBar', 'calMoreBtn'));
+  if (tab === 'history')  requestAnimationFrame(() => checkFilterOverflow('histFilterBar', 'histMoreBtn'));
 }
 
 function showGreeting(user) {
@@ -304,6 +328,10 @@ function renderProfileBtn(user) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
         Help &amp; Support
       </button>
+      <button class="profile-dropdown-help-btn" id="profileTermsBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        Terms &amp; Conditions
+      </button>
       <button class="profile-dropdown-help-btn" id="profileSwitchBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
         Switch Account
@@ -322,6 +350,11 @@ function renderProfileBtn(user) {
   document.getElementById('profileHelpBtn').onclick = () => {
     document.getElementById('profileDropdown').classList.remove('open');
     showTab('support');
+  };
+
+  document.getElementById('profileTermsBtn').onclick = () => {
+    document.getElementById('profileDropdown').classList.remove('open');
+    chrome.tabs.create({ url: chrome.runtime.getURL('terms.html') });
   };
 
   document.getElementById('profileSwitchBtn').onclick = () => {
@@ -420,10 +453,10 @@ chrome.runtime.onMessage.addListener((message) => {
         ? elapsedBase + (Date.now() - timerStart)
         : elapsedBase;
       setRecordingUI(false);
-      statusDiv.textContent = 'Processing & uploading...';
+      statusDiv.textContent = 'Uploading…';
       break;
     case 'upload_success':
-      statusDiv.textContent = 'Upload successful!';
+      statusDiv.textContent = 'Uploaded — transcribing…';
       break;
     case 'upload_failed':
       statusDiv.textContent = `Upload failed: ${message.error || 'Unknown error'}`;
@@ -434,26 +467,23 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     case 'transcribing': {
       const totalMins = _lastRecordingElapsedMs / 60000;
-      const estMins   = Math.max(1, Math.ceil(totalMins * 0.25));
-      statusDiv.textContent = `Transcription ready in ~${estMins} min — come back to download or email.`;
+      _transcriptionEstMins = Math.max(1, Math.ceil(totalMins * 0.25));
+      statusDiv.textContent = 'Ready';
+      // Switch to history so user can see the live processing card with estimate
+      showTab('history');
+      loadHistory();
       break;
     }
     case 'transcription_done':
       statusDiv.textContent = 'Ready';
-      // Save calendar-event → recording link if session was triggered from calendar
-      chrome.storage.local.get(['pendingCalEventLink'], stored => {
-        if (stored.pendingCalEventLink && message.recId) {
-          const linkKey = `callink_${stored.pendingCalEventLink.id}`;
-          chrome.storage.local.get(['calEventRecordings'], r => {
-            const map = r.calEventRecordings || {};
-            map[linkKey] = { recordingId: message.recId, event: stored.pendingCalEventLink };
-            chrome.storage.local.set({ calEventRecordings: map });
-          });
-          chrome.storage.local.remove(['pendingCalEventLink']);
-        }
+      // Refresh calRecordingsMap so calendar reflects any newly linked events
+      chrome.storage.local.get(['calEventRecordings'], r => {
+        calRecordingsMap = r.calEventRecordings || {};
+        _calCache = null;
       });
       loadHistory();
-      if (activeTab !== 'history') showTab('history');
+      // Only auto-switch to history when not currently recording (avoids interrupting a live session)
+      if (activeTab !== 'history' && !isRecording) showTab('history');
       chrome.storage.local.get(['recordings'], (r) => {
         const userRecs = (r.recordings || []).filter(rec => rec.userId === currentUser?.sub);
         azureSyncRecordings(userRecs);
@@ -870,10 +900,21 @@ function eventColor(ev) {
 
 function renderCalEvents(events, recordingsMap = {}) {
   if (!events.length) {
+    let emptyLabel = 'No events in the next 30 days';
+    if (_calFilter === 'date' && calPickDate?.value) {
+      const d = new Date(calPickDate.value + 'T00:00:00');
+      emptyLabel = `No meetings on ${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    } else if (_calFilter === 'today') {
+      emptyLabel = 'No upcoming meetings today';
+    } else if (_calFilter === 'week') {
+      emptyLabel = 'No upcoming meetings this week';
+    } else if (_calFilter === 'completed') {
+      emptyLabel = 'No completed meetings today';
+    }
     calEventsList.innerHTML = `
       <div class="cal-empty">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.25;margin-bottom:0.7rem"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><br>
-        No events in the next 30 days
+        ${emptyLabel}
       </div>`;
     return;
   }
@@ -898,28 +939,46 @@ function renderCalEvents(events, recordingsMap = {}) {
     upcoming.push({ ev, idx, isRecorded });
   });
 
-  // Build HTML helper for a single event row
+  const MAX_PER_DAY = 3; // show more button threshold
+
+  // Build HTML for a single compact one-line event row
   function evRowHtml(ev, idx, isDone, isRecorded) {
-    const color    = eventColor(ev);
-    const locHtml  = ev.location
-      ? `<div class="ev-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${escapeHtml(ev.location)}</div>` : '';
-    const meetBadge = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
-    const recBadge  = isRecorded
-      ? `<span class="ev-recorded-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Recorded</span>`
+    const color      = eventColor(ev);
+    const meetBadge  = ev.hangoutLink ? `<span class="ev-meet-badge">Meet</span>` : '';
+    const recBadge   = isRecorded
+      ? `<span class="ev-recorded-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Rec</span>`
       : '';
     const rowClass   = isDone ? 'ev-row ev-row--completed' : 'ev-row';
-    const barOpacity = isDone ? 'opacity:0.35;' : '';
+    const barOpacity = isDone ? 'opacity:0.3;' : '';
     const chevron    = isDone ? '' : `<svg class="ev-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
     return `
-      <div class="${rowClass}" data-idx="${idx}">
+      <div class="${rowClass}" data-event-id="${escapeHtml(ev.id || '')}">
         <div class="ev-time${isDone ? ' ev-time--done' : ''}">${escapeHtml(formatCalTime(ev))}</div>
         <div class="ev-bar" style="background:${color};${barOpacity}"></div>
         <div class="ev-info">
           <div class="ev-title">${escapeHtml(ev.summary || 'Untitled Event')}${meetBadge}${recBadge}</div>
-          ${locHtml}
         </div>
         ${chevron}
       </div>`;
+  }
+
+  // Render a day group with show-more support
+  function renderDayGroup(items, isDone) {
+    let out = '';
+    const visible = items.slice(0, MAX_PER_DAY);
+    const hidden  = items.slice(MAX_PER_DAY);
+    visible.forEach(({ ev, idx, isRecorded }) => { out += evRowHtml(ev, idx, isDone, isRecorded); });
+    if (hidden.length) {
+      const groupId = `calMore_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      out += `<div id="${groupId}_hidden" style="display:contents">`;
+      hidden.forEach(({ ev, idx, isRecorded }) => { out += evRowHtml(ev, idx, isDone, isRecorded); });
+      out += `</div>`;
+      out += `<button class="cal-show-more-btn" onclick="
+        var h=document.getElementById('${groupId}_hidden');
+        if(h){h.style.display='contents';this.style.display='none';}
+      ">+${hidden.length} more</button>`;
+    }
+    return out;
   }
 
   let html = '';
@@ -927,32 +986,39 @@ function renderCalEvents(events, recordingsMap = {}) {
   // — Upcoming section —
   if (upcoming.length) {
     html += `<div class="cal-section-header"><span class="cal-section-label">Upcoming</span></div>`;
-    let lastDateKey = '';
-    upcoming.forEach(({ ev, idx, isRecorded }) => {
+    // Group by date
+    const dayGroups = new Map();
+    upcoming.forEach(item => {
+      const ev = item.ev;
       const dateKey = ev.start.date
         ? ev.start.date
         : (() => {
             const d = new Date(ev.start.dateTime);
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           })();
-      if (dateKey !== lastDateKey) {
-        const d   = new Date(dateKey + 'T00:00:00');
-        const cmp = new Date(d); cmp.setHours(0, 0, 0, 0);
-        let badge = '';
-        if (cmp.getTime() === todayDay.getTime())   badge = '<span class="cal-today-badge">Today</span>';
-        else if (cmp.getTime() === tomorrow.getTime()) badge = '<span class="cal-today-badge cal-tomorrow-badge">Tomorrow</span>';
-        const dayName = d.toLocaleDateString([], { weekday: 'long' });
-        const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        html += `<div class="cal-day-header">${badge}<span class="cal-day-name">${escapeHtml(dayName)}</span><span class="cal-day-date">${escapeHtml(dateStr)}</span></div>`;
-        lastDateKey = dateKey;
-      }
-      html += evRowHtml(ev, idx, false, isRecorded);
+      if (!dayGroups.has(dateKey)) dayGroups.set(dateKey, []);
+      dayGroups.get(dateKey).push(item);
+    });
+
+    dayGroups.forEach((items, dateKey) => {
+      const d   = new Date(dateKey + 'T00:00:00');
+      const cmp = new Date(d); cmp.setHours(0, 0, 0, 0);
+      let badge = '';
+      if (cmp.getTime() === todayDay.getTime())        badge = '<span class="cal-today-badge">Today</span>';
+      else if (cmp.getTime() === tomorrow.getTime())   badge = '<span class="cal-today-badge cal-tomorrow-badge">Tomorrow</span>';
+      const dayName = d.toLocaleDateString([], { weekday: 'long' });
+      const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      html += `<div class="cal-day-header">${badge}<span class="cal-day-name">${escapeHtml(dayName)}</span><span class="cal-day-date">${escapeHtml(dateStr)}</span></div>`;
+      html += renderDayGroup(items, false);
     });
   } else if (!completed.length) {
-    html += `<div class="cal-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;display:block;margin:0 auto 0.5rem"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>No upcoming events</div>`;
+    const label = _calFilter === 'today' ? 'No upcoming meetings today'
+      : _calFilter === 'date' && calPickDate?.value ? `No upcoming meetings on ${new Date(calPickDate.value + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+      : 'No upcoming events';
+    html += `<div class="cal-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;display:block;margin:0 auto 0.5rem"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>${label}</div>`;
   }
 
-  // — Completed Today section —
+  // — Completed Today section (always shown) —
   if (completed.length) {
     html += `
       <div class="cal-completed-header" style="margin-top:${upcoming.length ? '0.6rem' : '0'}">
@@ -960,12 +1026,15 @@ function renderCalEvents(events, recordingsMap = {}) {
         <span class="cal-completed-badge">Done</span>
         <span class="cal-completed-label">Completed Today</span>
       </div>`;
-    completed.forEach(({ ev, idx, isRecorded }) => { html += evRowHtml(ev, idx, true, isRecorded); });
+    html += renderDayGroup(completed, true);
   }
 
   calEventsList.innerHTML = html;
   calEventsList.querySelectorAll('.ev-row').forEach(row => {
-    row.onclick = () => showEventDetail(calEvents[parseInt(row.dataset.idx)]);
+    row.onclick = () => {
+      const ev = calEvents.find(e => e.id === row.dataset.eventId);
+      if (ev) showEventDetail(ev);
+    };
   });
 }
 
@@ -1386,6 +1455,10 @@ calNewEventBtn.onclick = () => {
 calRecordEventBtn.onclick = () => {
   // Persist the event so background can link it to the recording after transcription
   if (activeCalEvent) chrome.storage.local.set({ pendingCalEventLink: activeCalEvent });
+  // Pre-fill recording title with the calendar event name
+  if (activeCalEvent?.summary) {
+    recTitleInput.value = activeCalEvent.summary;
+  }
   showTab('record');
   if (!isRecording) initiateRecording();
 };
@@ -1752,18 +1825,36 @@ function downloadTextFile(filename, content) {
 
 function renderHistoryCards(recs, folders) {
   if (!recs.length) {
+    let emptyMsg;
+    if (_histFilter === 'date' && histPickDate?.value) {
+      const d = new Date(histPickDate.value + 'T00:00:00');
+      emptyMsg = `No recordings on ${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    } else if (_histFilter === 'done') {
+      emptyMsg = 'No completed recordings';
+    } else if (_histFilter === 'processing') {
+      emptyMsg = 'No recordings in progress';
+    } else if (_histFilter === 'failed') {
+      emptyMsg = 'No failed recordings';
+    } else {
+      emptyMsg = 'No recordings yet.<br><small>Recordings appear here after you stop recording.</small>';
+    }
     histCardsList.innerHTML = `
       <div class="hist-empty">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.25;display:block;margin:0 auto 0.6rem"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-        No recordings yet.<br><small>Recordings appear here after you stop recording.</small>
+        ${emptyMsg}
       </div>`;
     return;
   }
 
   const foldersArr = folders || [];
+  // Find if any recording is the most-recent transcribing one (to show estimate)
+  const latestTranscribingIdx = recs.findIndex(r =>
+    r.status === 'transcribing' || r.status === 'processing'
+  );
   histCardsList.innerHTML = recs.map((rec, i) => {
-    const s       = rec.status || 'processing';
-    const badgeCls = s === 'done' ? 'done' : (s === 'transcribing' || s === 'processing') ? 'transcribing' : 'failed';
+    const s        = rec.status || 'processing';
+    const isProc   = s === 'transcribing' || s === 'processing';
+    const badgeCls = s === 'done' ? 'done' : isProc ? 'transcribing' : 'failed';
     const badgeLbl = s === 'done' ? 'Done'
       : s === 'transcribing'         ? 'Transcribing…'
       : s === 'upload_failed'        ? 'Upload Failed'
@@ -1772,6 +1863,9 @@ function renderHistoryCards(recs, folders) {
     const folder      = foldersArr.find(f => f.id === rec.folderId);
     const folderBadge = folder
       ? `<span class="hist-folder-badge" style="border-color:${folder.color}40;color:${folder.color}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>${escapeHtml(folder.name)}</span>` : '';
+    // Show transcription estimate on the most-recent processing card
+    const estNote = (isProc && i === latestTranscribingIdx && _transcriptionEstMins > 0)
+      ? `<span class="hist-est-note">Ready in ~${_transcriptionEstMins} min</span>` : '';
     return `
       <div class="hist-card" data-idx="${i}">
         <div class="hist-card-title-row">
@@ -1788,7 +1882,7 @@ function renderHistoryCards(recs, folders) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             ${escapeHtml(formatDuration(rec.duration))}
           </span>
-          ${folderBadge}
+          ${folderBadge}${estNote}
         </div>
       </div>`;
   }).join('');
@@ -2236,15 +2330,34 @@ async function azureSyncRecordings(recordings) {
   }
 }
 
+function statusRank(r) {
+  // Reconcile: if we have transcript/summary data, it's done regardless of status field
+  if (r.transcript?.length || r.summary?.key_points?.length) return 3;
+  if (r.status === 'done') return 3;
+  if (r.status === 'transcribing') return 2;
+  if (r.status === 'processing') return 1;
+  return 0; // failed variants
+}
+
+function normalizeStatus(r) {
+  // If has real data, force status to done so it never shows as processing after login
+  if ((r.transcript?.length || r.summary?.key_points?.length) && r.status !== 'done') {
+    return { ...r, status: 'done' };
+  }
+  return r;
+}
+
 function mergeRecordings(local, drive) {
   const map = new Map();
-  for (const r of local) map.set(r.id, r);
+  for (const r of local)  map.set(r.id, normalizeStatus(r));
   for (const r of drive) {
     const existing = map.get(r.id);
+    const norm = normalizeStatus(r);
     if (!existing) {
-      map.set(r.id, r);
-    } else if (r.status === 'done' && existing.status !== 'done') {
-      map.set(r.id, { ...r });
+      map.set(r.id, norm);
+    } else if (statusRank(norm) > statusRank(existing)) {
+      // Prefer higher-rank status but keep local data if richer
+      map.set(r.id, { ...existing, ...norm, status: norm.status });
     }
   }
   return Array.from(map.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -2260,11 +2373,8 @@ async function loadHistory() {
     new Promise(r => chrome.storage.local.get(['histFolders'], r)),
   ]);
   const cachedAzure = localResult._cachedAzureRecs || [];
-  const azureIds    = new Set(cachedAzure.map(r => r.id));
-  const localToShow = (localResult.recordings || []).filter(r =>
-    r.userId === currentUser?.sub &&
-    (r.status === 'processing' || r.status === 'transcribing' || !azureIds.has(r.id))
-  );
+  // Always include all local recordings — mergeRecordings prefers higher-rank status
+  const localToShow = (localResult.recordings || []).filter(r => r.userId === currentUser?.sub);
   histRecordings = mergeRecordings(localToShow, cachedAzure);
   histFolders    = foldersResult.histFolders || [];
   applyHistFilter();
@@ -2273,11 +2383,7 @@ async function loadHistory() {
   // Refresh from Azure in background — updates cache + re-renders when done
   azureLoadRecordings().then(azureRecs => {
     chrome.storage.local.set({ _cachedAzureRecs: azureRecs });
-    const freshIds    = new Set(azureRecs.map(r => r.id));
-    const freshLocal  = (localResult.recordings || []).filter(r =>
-      r.userId === currentUser?.sub &&
-      (r.status === 'processing' || r.status === 'transcribing' || !freshIds.has(r.id))
-    );
+    const freshLocal = (localResult.recordings || []).filter(r => r.userId === currentUser?.sub);
     histRecordings = mergeRecordings(freshLocal, azureRecs);
     applyHistFilter();
   }).catch(() => {});
@@ -2694,33 +2800,109 @@ document.querySelectorAll('.support-faq-q').forEach(btn => {
 });
 
 // ---------------------------------------------------------------------------
+// Filter bar "More" button handlers
+// ---------------------------------------------------------------------------
+document.getElementById('calMoreBtn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  const bar     = document.getElementById('calFilterBar');
+  const expanded = bar.classList.toggle('expanded');
+  e.currentTarget.textContent = expanded ? 'Less ▴' : 'More ▾';
+});
+document.getElementById('histMoreBtn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  const bar     = document.getElementById('histFilterBar');
+  const expanded = bar.classList.toggle('expanded');
+  e.currentTarget.textContent = expanded ? 'Less ▴' : 'More ▾';
+});
+
+// ---------------------------------------------------------------------------
 // Calendar filter chips
 // ---------------------------------------------------------------------------
-let _calFilter = 'all';
+let _calFilter   = 'today';
+const calDatePickRow   = document.getElementById('calDatePickRow');
+const calPickDate      = document.getElementById('calPickDate');
+const calDateChipLabel = document.getElementById('calDateChipLabel');
+
 document.querySelectorAll('[data-cal-filter]').forEach(chip => {
   chip.onclick = () => {
     _calFilter = chip.dataset.calFilter;
     document.querySelectorAll('[data-cal-filter]').forEach(c => c.classList.toggle('active', c === chip));
+    calDatePickRow.classList.toggle('visible', _calFilter === 'date');
+    if (_calFilter === 'date' && calPickDate) calPickDate.focus();
     applyCalFilter();
   };
 });
 
+if (calPickDate) {
+  calPickDate.addEventListener('change', () => {
+    const d = calPickDate.value;
+    if (calDateChipLabel) {
+      calDateChipLabel.textContent = d
+        ? new Date(d + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })
+        : 'Pick Date';
+    }
+    applyCalFilter();
+  });
+}
+
 function applyCalFilter() {
   const now      = new Date();
-  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
-  const weekEnd  = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7);
-  const monthEnd = new Date(now); monthEnd.setDate(monthEnd.getDate() + 30);
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+  const weekEnd    = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7); weekEnd.setHours(23, 59, 59, 999);
 
   let filtered = calEvents;
-  if (_calFilter !== 'all') {
+
+  if (_calFilter === 'today') {
+    // Only upcoming unrecorded events happening today (not completed/recorded)
     filtered = calEvents.filter(ev => {
+      const isRecorded = Object.values(calRecordingsMap).some(v => v.event?.id === ev.id);
+      if (isRecorded) return false;
       const start = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00');
-      if (_calFilter === 'today')  return start <= todayEnd;
-      if (_calFilter === 'week')   return start <= weekEnd;
-      if (_calFilter === 'month')  return start <= monthEnd;
+      const end   = ev.end?.dateTime  ? new Date(ev.end.dateTime)   : null;
+      // Must be today AND not already ended
+      if (start > todayEnd || start < todayStart) return false;
+      if (end && end < now) return false;
       return true;
     });
+  } else if (_calFilter === 'week') {
+    // Only upcoming unrecorded events this week (from now to 7 days)
+    filtered = calEvents.filter(ev => {
+      const isRecorded = Object.values(calRecordingsMap).some(v => v.event?.id === ev.id);
+      if (isRecorded) return false;
+      const start = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00');
+      const end   = ev.end?.dateTime  ? new Date(ev.end.dateTime)   : null;
+      if (start > weekEnd) return false;
+      if (end && end < now) return false;
+      return true;
+    });
+  } else if (_calFilter === 'date') {
+    // All events (recorded or not) on the picked date
+    const picked = calPickDate?.value;
+    if (picked) {
+      const dayStart = new Date(picked + 'T00:00:00');
+      const dayEnd   = new Date(picked + 'T23:59:59');
+      filtered = calEvents.filter(ev => {
+        const start = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00');
+        return start >= dayStart && start <= dayEnd;
+      });
+    }
+  } else if (_calFilter === 'completed') {
+    // Show only recorded events or today's events that have already ended
+    filtered = calEvents.filter(ev => {
+      const isRecorded = Object.values(calRecordingsMap).some(v => v.event?.id === ev.id);
+      if (isRecorded) return true;
+      if (ev.end?.dateTime) {
+        const endDt   = new Date(ev.end.dateTime);
+        const startDt = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00');
+        const startDay = new Date(startDt); startDay.setHours(0, 0, 0, 0);
+        return startDay.getTime() === todayStart.getTime() && endDt < now;
+      }
+      return false;
+    });
   }
+  // 'all' → pass everything unchanged
+
   renderCalEvents(filtered, calRecordingsMap);
 }
 
@@ -2728,13 +2910,20 @@ function applyCalFilter() {
 // History filter chips
 // ---------------------------------------------------------------------------
 let _histFilter = 'all';
+const histDateRangeRow = document.getElementById('histDateRangeRow');
+const histPickDate     = document.getElementById('histPickDate');
+
 document.querySelectorAll('[data-hist-filter]').forEach(chip => {
   chip.onclick = () => {
     _histFilter = chip.dataset.histFilter;
     document.querySelectorAll('[data-hist-filter]').forEach(c => c.classList.toggle('active', c === chip));
+    if (histDateRangeRow) histDateRangeRow.classList.toggle('visible', _histFilter === 'date');
+    if (_histFilter === 'date' && histPickDate) histPickDate.focus();
     applyHistFilter();
   };
 });
+
+if (histPickDate) histPickDate.addEventListener('change', applyHistFilter);
 
 function applyHistFilter() {
   if (!histRecordings) return;
@@ -2745,6 +2934,15 @@ function applyHistFilter() {
       if (_histFilter === 'done')       return s === 'done';
       if (_histFilter === 'processing') return s === 'processing' || s === 'transcribing';
       if (_histFilter === 'failed')     return s === 'upload_failed' || s === 'transcription_failed';
+      if (_histFilter === 'date') {
+        const picked = histPickDate?.value;
+        if (!picked) return true;
+        const from  = new Date(picked + 'T00:00:00');
+        const to    = new Date(picked + 'T23:59:59');
+        const rDate = r.date ? new Date(r.date) : null;
+        if (!rDate) return false;
+        return rDate >= from && rDate <= to;
+      }
       return true;
     });
   }
@@ -2755,6 +2953,9 @@ function applyHistFilter() {
 // Init on popup open
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+  // Populate recorder context bar with today's date
+  updateRecContextBar(false);
+
   // Read cache + consent together so we can show the dashboard instantly (no flash)
   chrome.storage.local.get(['hasRecordingConsent', 'cachedUser'], (stored) => {
     hasConsent = stored.hasRecordingConsent || false;

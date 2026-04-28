@@ -67,6 +67,12 @@
       <!-- Recorder View -->
       <div id="recorderSection" class="view-section fade-in" style="display: none;">
 
+        <!-- Context bar — fills the top space -->
+        <div class="rec-context-bar">
+          <span class="rec-date-pill" id="recDateLabel"></span>
+          <span class="rec-ready-dot" id="recReadyDot">Ready</span>
+        </div>
+
         <!-- Pre-recording metadata (hidden while recording is active) -->
         <div id="recPreRecordForm" class="rec-pre-form">
           <input type="text" id="recTitleInput" class="rec-title-input" placeholder="Recording title…" maxlength="80" autocomplete="off">
@@ -116,10 +122,18 @@
             </div>
           </div>
           <div class="filter-bar" id="calFilterBar">
-            <button class="filter-chip active" data-cal-filter="all">All</button>
-            <button class="filter-chip" data-cal-filter="today">Today</button>
+            <button class="filter-chip active" data-cal-filter="today">Today</button>
             <button class="filter-chip" data-cal-filter="week">This Week</button>
-            <button class="filter-chip" data-cal-filter="month">30 Days</button>
+            <button class="filter-chip" data-cal-filter="all">All</button>
+            <button class="filter-chip" data-cal-filter="completed">Completed</button>
+            <button class="filter-chip cal-date-chip" data-cal-filter="date" id="calDateChip">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              <span id="calDateChipLabel">Pick Date</span>
+            </button>
+            <button class="filter-chip filter-more-btn" id="calMoreBtn">More ▾</button>
+          </div>
+          <div class="cal-datepick-row" id="calDatePickRow">
+            <input type="date" class="cal-daterange-input" id="calPickDate">
           </div>
           <div id="calEventsList" class="cal-events-list">
             <div class="cal-loading">Loading events…</div>
@@ -262,6 +276,14 @@
             <button class="filter-chip" data-hist-filter="done">Done</button>
             <button class="filter-chip" data-hist-filter="processing">Processing</button>
             <button class="filter-chip" data-hist-filter="failed">Failed</button>
+            <button class="filter-chip cal-date-chip" data-hist-filter="date" id="histDateChip">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              Date
+            </button>
+            <button class="filter-chip filter-more-btn" id="histMoreBtn">More ▾</button>
+          </div>
+          <div class="cal-datepick-row hist-daterange-row" id="histDateRangeRow">
+            <input type="date" class="cal-daterange-input" id="histPickDate">
           </div>
           <div id="histCardsList" class="hist-cards-list">
             <div class="hist-empty">Loading recordings…</div>
